@@ -1,7 +1,7 @@
 # XMPP username (JID) to connect as
 username: nagios@example.com/molniya
 # Password for XMPP user
-password: ipanema
+password: examplepass
 # Base URI for your Nagios installation
 nagios_uri: http://nagios.example.com/nagios
 # /var directory of your Nagios installation
