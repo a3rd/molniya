@@ -1,0 +1,18 @@
+# XMPP username (JID) to connect as
+username: nagios@example.com/molniya
+# Password for XMPP user
+password: ipanema
+# Base URI for your Nagios installation
+nagios_uri: http://nagios.example.com/nagios
+# /var directory of your Nagios installation
+nagios_var: /usr/local/nagios/var
+# Nagios contact field used to store XMPP JID
+xmpp_field: address1
+# email address to send mail as
+smtp_from: nagios@example.com
+# SMTP server to use
+smtp_relay: smtp.example.com
+# Options suitable for passing to Rack::Handler::Mongrel#run
+http_opts:
+  :Host: localhost
+  :Port: 7991

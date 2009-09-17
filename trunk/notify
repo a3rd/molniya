@@ -1,0 +1,68 @@
+#!/usr/bin/env ruby
+
+require 'net/http'
+require 'optparse'
+require 'syslog'
+require 'uri'
+
+$contact = nil
+
+$data = {}
+$host = 'localhost:7991'
+$policy = nil
+$ntype = nil
+
+Syslog.open('notify', Syslog::LOG_NDELAY, Syslog::LOG_DAEMON)
+
+KEYS = %w{NOTIFICATIONTYPE HOSTNAME HOSTALIAS HOSTSTATE HOSTADDRESS HOSTOUTPUT SERVICEDESC SERVICESTATE SERVICEOUTPUT SERVICEDESC}
+
+begin
+  OptionParser.new do |opts|
+    opts.on("--contact NAME", "Nagios contact name") do |n|
+      $contact = n
+    end
+    opts.on("--policy POLICY", "Nagios contact policy") do |p|
+      $policy = p
+    end
+    opts.on("--type TYPE", "Notification type, either host or service") do |t|
+      $ntype = t
+    end
+    opts.on("--connect HOST", "host[:port] to dispatch via") do |host|
+      $host = host
+    end
+    opts.on("--data DATA", "data to send") do |data|
+      $data = eval(data)
+    end
+    #KEYS.each do |key|
+    #  opts.on("--#{key} VALUE", "#{key} macro") do |v|
+    #    $data[key.upcase] = v
+    #  end
+    #end
+  end.parse!
+
+  raise "Must supply contact!" unless $contact
+  raise "Must supply notification type!" unless $ntype
+  raise "Must supply notification policy!" unless $policy
+
+  uri = "http://#{$host}/contact/#{$contact}/notify"
+  if $data.empty?
+    KEYS.each { |key| $data[key] = ENV["NAGIOS_#{key}"] }
+  end
+  $data['policy'] = $policy
+  $data['ntype'] = $ntype
+  #Syslog.info "Sending: #{$data.inspect}"
+  res = Net::HTTP.post_form(URI.parse(uri), $data)
+
+  case res
+  when Net::HTTPSuccess
+    Syslog.info "Sent notification to #{$contact}."
+    exit 0
+  else
+    # TODO: syslog? fallback email?
+    Syslog.err "Failed to notify #{$contact}: #{res}"
+    exit 1
+  end
+rescue
+  Syslog.err "Notification failure: #{$!.class}: #{$!.message}"
+  exit 1
+end

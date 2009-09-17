@@ -1,0 +1,34 @@
+Molniya is an instant messaging interface for Nagios. It relays alerts to Nagios contacts in a convenient way; it also allows you to ask for a status report, force checks, acknowledge faults, and more.
+
+Requirements:
+ * A Unix/Linux system running Nagios 3.
+ * An XMPP server and user account; Google Talk works.
+ * An SMTP server to relay outgoing mail.
+ * Ruby 1.8 with the following gems:
+  * metaid
+  * xmpp4r
+  * sinatra
+  * rack
+  * mongrel
+
+Setup:
+
+1. Install the required gems listed above.
+2. Copy the sample configuration in example.yaml and fill in appropriate values for the various settings. See the comments in example.yaml for guidance.
+
+Running:
+
+$ ./molniya config.yaml
+
+Caveats:
+
+This has been developed as an in-house application. It has only been used with one Nagios installation on Solaris. It should work in other environments but this is untested so far; let me know how it works out for you.
+
+Bugs:
+
+The XHTML-IM usage is problematic with some IM clients.
+
+TODO:
+ * Provide SMF manifest (and init script) for running as a service.
+ * Set up reasonable logging instead of writing everything to stderr.
+ * Improve many aspects of the code.

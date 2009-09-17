@@ -1,0 +1,3 @@
+#!/bin/ksh
+
+ruby -rubygems -rmolniya -e 'Molniya::launch()' $*
