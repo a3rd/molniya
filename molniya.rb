@@ -1,8 +1,9 @@
 ## Molniya: an IM gateway for Nagios
 ##
-## Copyright 2009 Windermere Services Company. All rights reserved.
-## By Clayton Wheeler, cswheeler@gmail.com
+## Dedicated to Sergey Korolev.
 ##
+## Copyright 2009 Windermere Services Company.
+## By Clayton Wheeler, cswheeler@gmail.com
 ##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
