@@ -1,0 +1,19 @@
+#summary Project roadmap.
+
+= Status =
+
+Right now, Molniya is designated 0.1. That's probably a bit low, considering that it's in operational use as it is. However, there are some serious deficiencies to address before it rates a 1.0 designation in my opinion.
+
+= For 1.0 =
+
+ * Handle message formatting in a more modular and customizable way.
+ * Track problems reported while users are offline and summarize those that are still problems when they return. [http://code.google.com/p/molniya/issues/detail?id=1 Issue 1]
+ * Add a fuller set of commands for scheduling downtime, state stalking, custom notifications, etc. Issues [http://code.google.com/p/molniya/issues/detail?id=2 2], [http://code.google.com/p/molniya/issues/detail?id=3 3]
+ * Overhaul command handling and dispatch so it's not one giant case statement.
+ * Lots of things are very service-centric and don't deal with host problems. [http://code.google.com/p/molniya/issues/detail?id=4 Issue 4]
+ * General code improvements to rationalize the handling of contacts, the lookup of notification referents, etc.
+ * Test on Linux. [http://code.google.com/p/molniya/issues/detail?id=5 Issue 5]
+
+= Past 1.0 =
+
+TODO
