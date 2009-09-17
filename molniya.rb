@@ -59,11 +59,6 @@ module Molniya
 
   LOG = Logger.new(STDERR)
 
-  #def log(msg)
-  #  $stderr.puts "#{Time.now.to_s} #{msg}"
-  #  #Syslog.log(Syslog::LOG_INFO, msg)
-  #end
-
   def self.brief_time_delta(t)
     Molniya::brief_duration((Time.now - t).to_i)
   end
@@ -862,7 +857,7 @@ EOF
       #log "XMPP contacts: #{xmpp.contacts.inspect}"
       x_contact = xmpp.contacts[jid]
       unless x_contact
-        log "WARNING: no contact with jid #{jid}, not sending message"
+        LOG.warn "no contact with jid #{jid}, not sending message"
         return false
       end
       if x_contact.available?
@@ -940,7 +935,7 @@ Subject: #{subject}
 EOF
       with_smtp_conn do |conn|
         conn.send_message(message, from, to)
-        log "Sent notification to #{to} via SMTP."
+        LOG.info "Sent notification to #{to} via SMTP."
       end
     end
 
