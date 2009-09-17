@@ -1,4 +1,6 @@
-Molniya is an instant messaging interface for Nagios. It relays alerts to Nagios contacts in a convenient way; it also allows you to ask for a status report, force checks, acknowledge faults, and more.
+Molniya is an instant messaging interface for Nagios. It relays alerts
+to Nagios contacts in a convenient way; it also allows you to ask for
+a status report, force checks, acknowledge faults, and more.
 
 Requirements:
  * A Unix/Linux system running Nagios 3.
@@ -11,18 +13,56 @@ Requirements:
   * rack
   * mongrel
 
-Setup:
+
+Molniya setup:
 
 1. Install the required gems listed above.
-2. Copy the sample configuration in example.yaml and fill in appropriate values for the various settings. See the comments in example.yaml for guidance.
+2. Copy the sample configuration in example.yaml and fill in appropriate
+   values for the various settings. See the comments in example.yaml for
+   guidance.
+3. Configure your Nagios IM contacts with their IM addresses (XMPP JIDs)
+   in the selected xmpp_field; I use address1.
+4. Launch the server:
+   $ ./molniya config.yaml
+5. Connect to your XMPP server as the Molniya account and add your own
+   IM account as a contact.
 
-Running:
+It should now be working; check by sending it the message 'status'. It
+should reply with a status report of current faults, or the message
+"All clear." If so, you're all set.
 
-$ ./molniya config.yaml
+
+Nagios notification setup:
+
+The included 'notify' utility is used as a Nagios notification command
+to send messages through Molniya via XMPP or SMTP. The file
+'notify.cfg' contains the appropriate command definitions; edit the
+path as appropriate for your installation.
+
+To actually use this notification method, configure Nagios contacts to
+use the 'molniya-notify' and 'molniya-host-notify' commands as
+service_notification_commands and host_notification_commands. See the
+comments in notify.cfg for an example and discussion.
+
+
+Usage:
+
+Send the message 'help' for a summary of commands.
+
+Also, there are simple administrative roster-management commands:
+
+admin list-roster: prints a list of IM contacts
+admin add <JID> <ALIAS>: add JID as a contact with alias ALIAS
+admin remove <JID>: remove JID as a contact
+
 
 Caveats:
 
-This has been developed as an in-house application. It has only been used with one Nagios installation on Solaris. It should work in other environments but this is untested so far; let me know how it works out for you.
+This has been developed as an in-house application. It has only been
+used with one Nagios installation on Solaris. It should work in other
+environments but this is untested so far; let me know how it works out
+for you.
+
 
 Bugs:
 
@@ -31,4 +71,5 @@ The XHTML-IM usage is problematic with some IM clients.
 TODO:
  * Provide SMF manifest (and init script) for running as a service.
  * Set up reasonable logging instead of writing everything to stderr.
+ * Refactor the incredibly primitive command handling.
  * Improve many aspects of the code.
