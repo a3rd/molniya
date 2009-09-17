@@ -1,3 +1,17 @@
+## nagios.rb: a Nagios library
+##
+## Copyright 2009 Windermere Services Company.
+## By Clayton Wheeler, cswheeler@gmail.com
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; version 2 of the License.
+##   
+## This program is distributed in the hope that it will be useful,
+## but WITHOUT ANY WARRANTY; without even the implied warranty of
+## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+## General Public License for more details.
+
 require 'thread'
 require 'metaid'
 require 'rexml/document'
