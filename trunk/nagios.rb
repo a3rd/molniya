@@ -114,13 +114,14 @@ module Nagios
 
     def init_mutex
       @mutex = Mutex.new
+      @listeners = []
     end
 
     def refresh_if_needed()
       @mutex.synchronize do 
         if (not @contents) || (not @mtime) || (source.mtime > @mtime)
           mtime = source.mtime
-          @contents = load(parse())
+          contents = load(parse())
           @mtime = mtime
         end
       end
@@ -131,11 +132,26 @@ module Nagios
       return @contents
     end
 
+    def contents=(v)
+      @contents = v
+      ## call all listeners
+      ## retain only those that return true
+      @listeners = @listeners.select { |l| l.call(v) }
+    end
+
+    def register(&listener)
+      @listeners << listener
+    end
+
+    def listeners?
+      return ! @listeners.empty?
+    end
+
   end
 
   module Monitored
     attr_reader :soft_state, :hard_state,
-      :soft_since, :hard_since, :last_ok
+      :soft_since, :hard_since, :last_ok, :last_check
 
     def update_state(state)
       @state = state
@@ -144,6 +160,7 @@ module Nagios
       @soft_since = Nagios.ptime(state['last_state_change'])
       @hard_since = Nagios.ptime(state['last_hard_state_change'])
       @last_ok = Nagios.ptime(state['last_time_ok'])
+      @last_check = Nagios.ptime(state['last_check'])
     end
 
     def cur_state
@@ -156,7 +173,7 @@ module Nagios
   end
 
   class ConfigItem
-    attr_reader :type, :name, :props
+    attr_reader :type, :name, :props, :cfg
 
     def self.tag_is(tag)
       meta_def :tag do; tag; end
@@ -166,9 +183,14 @@ module Nagios
       "#{self.tag}_name"
     end
 
-    def initialize(props)
+    def initialize(props, cfg)
       @props = props
       @name = props[self.class.name_field]
+      @cfg = cfg
+    end
+
+    def cmd_t
+      cfg.nagios.cmd_t
     end
 
   end
@@ -224,8 +246,19 @@ module Nagios
       @services = {}
     end
 
-    def force_check(target, at)
-      target.schedule_forced_host_check(self.name, at.to_i)
+    def acknowledge(opts_a)
+      opts = { :sticky => 0, :notify => 1, :persistent => 1 }
+      opts.merge! opts_a
+      cmd_t.acknowledge_host_problem(self.name,
+                                     opts[:sticky],
+                                     opts[:notify],
+                                     opts[:persistent],
+                                     opts[:author],
+                                     opts[:comment])
+    end
+
+    def force_check(at)
+      cmd_t.schedule_forced_host_check(self.name, at.to_i)
     end
 
     def state_sym(v)
@@ -234,6 +267,10 @@ module Nagios
 
     def <=>(other)
       name <=> other.name
+    end
+
+    def detail(fmt)
+      cfg.nagios.sb.fmt[fmt].service_detail(self)
     end
 
     def to_s
@@ -261,8 +298,22 @@ module Nagios
       'service_description'
     end
 
-    def force_check(target, at)
-      target.schedule_forced_svc_check(self.host.name, self.name, at.to_i)
+    def acknowledge(opts_a)
+      opts = { :sticky => 0, :notify => 1, :persistent => 1 }
+      opts.merge! opts_a
+      cmd_t.acknowledge_svc_problem(self.host.name,
+                                    self.name,
+                                    opts[:sticky],
+                                    opts[:notify],
+                                    opts[:persistent],
+                                    opts[:author],
+                                    opts[:comment])
+    end
+
+    def force_check(at)
+      cmd_t.schedule_forced_svc_check(self.host.name,
+                                      self.name,
+                                      at.to_i)
     end
 
     def state_sym(v)
@@ -271,6 +322,10 @@ module Nagios
 
     def <=>(other)
       name <=> other.name
+    end
+
+    def detail(fmt)
+      cfg.nagios.sb.fmt[fmt].service_detail(self)
     end
 
     def to_s
@@ -292,7 +347,6 @@ module Nagios
     tag_is 'timeperiod'
   end
 
-  # removed Service
   OBJECT_TYPES = [Command, Contact, ContactGroup, Host, HostGroup,
                   ServiceGroup, ServiceEscalation, TimePeriod]
   OTYPE_BY_TAG = Hash[*OBJECT_TYPES.collect { |t| [t.tag, t] }.flatten()]
@@ -300,9 +354,16 @@ module Nagios
   class Config
     include Cached
 
-    def initialize(source)
+    attr_reader :nagios
+
+    def initialize(source, nagios)
       self.source = source
+      @nagios = nagios
       init_mutex()
+    end
+
+    def sb
+      nagios.sb
     end
 
     def parse()
@@ -316,7 +377,7 @@ module Nagios
       svcs = []
       defs.each do |tag, data|
         if tag != Service.tag
-          item = OTYPE_BY_TAG[tag].new(data)
+          item = OTYPE_BY_TAG[tag].new(data, self)
           by_tag[tag][item.name] = item
         else
           # special handling for Services since they are children of Hosts
@@ -335,66 +396,16 @@ module Nagios
     end
   end
 
-  #### revise below
-
-  class ServiceInstance
-    include Monitored 
-
-    attr_reader :host, :desc
-
-    def initialize(host, desc)
-      @host = host
-      @desc = desc
-    end
-
-    def state_sym(v)
-      SVC_STATE_SYMS[v]
-    end
-
-    def host_name
-      host.name
-    end
-
-    def name
-      "#{host.name}/#{desc}"
-    end
-
-    def <=>(other)
-      name <=> other.name
-    end
-
-    def to_s
-      "Service #{name}: #{cur_state}"
-    end
-
-    def force_check(target, at)
-      target.schedule_forced_svc_check(self.host.name, self.desc, at.to_i)
-    end
-  end
-      
   class Status
     include Cached
 
-    attr_accessor :config, :services, :hosts_by, :services_by
+    attr_accessor :config, :services, :hosts_by, :services_by, :nagios
 
-    def initialize(path, config)
+    def initialize(path, nagios)
+      self.nagios = nagios
       self.source = path
-      self.config = config
+      self.config = nagios.config
       init_mutex()
-#       hosts = config.contents.hosts
-#       svcs = config.contents.services
-#       parse().each do |otype, data|
-#         if otype == 'servicestatus'
-#           # TODO: check name vs desc
-#           host = hosts[data['host_name']]
-#           unless host
-#             raise "missing host for #{data.inspect}"
-#           end
-#           svc_desc = data['service_description']
-#           si = ServiceInstance.new(host, svc_desc)
-#           host.services[svc_desc] = si
-#         end
-#       end
     end
 
     def parse()
