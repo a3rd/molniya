@@ -18,6 +18,8 @@ require 'rexml/document'
 require 'set'
 require 'ostruct'
 
+require 'inspectable'
+
 module Nagios
 
   HOST_STATE_SYMS = {
@@ -121,7 +123,7 @@ module Nagios
       @mutex.synchronize do 
         if (not @contents) || (not @mtime) || (source.mtime > @mtime)
           mtime = source.mtime
-          contents = load(parse())
+          self.contents = load(parse())
           @mtime = mtime
         end
       end
@@ -129,6 +131,9 @@ module Nagios
 
     def contents()
       refresh_if_needed()
+      unless @contents
+        raise "Failed to load contents of #{self.class}!"
+      end
       return @contents
     end
 
@@ -150,8 +155,10 @@ module Nagios
   end
 
   module Monitored
-    attr_reader :soft_state, :hard_state,
-      :soft_since, :hard_since, :last_ok, :last_check
+    include Inspectable
+
+    attr_reader :soft_state, :hard_state, :soft_since, :hard_since, :last_ok, :last_check
+    inspect_my :hard_state
 
     def update_state(state)
       @state = state
@@ -173,7 +180,10 @@ module Nagios
   end
 
   class ConfigItem
+    include Inspectable
+
     attr_reader :type, :name, :props, :cfg
+    inspect_my :name
 
     def self.tag_is(tag)
       meta_def :tag do; tag; end
@@ -203,8 +213,8 @@ module Nagios
       klass.group=(self)
     end
 
-    def initialize(props)
-      super(props)
+    def initialize(*args)
+      super(*args)
       @members = Set.new
     end
 
@@ -217,8 +227,8 @@ module Nagios
       @@group_class = klass
     end
 
-    def initialize(props)
-      super(props)
+    def initialize(*args)
+      super(*args)
       @groups = Set.new
     end
   end
@@ -289,8 +299,8 @@ module Nagios
     tag_is 'service'
     attr_reader :host
 
-    def initialize(defs, host)
-      super(defs)
+    def initialize(defs, cfg, host)
+      super(defs, cfg)
       @host = host
     end
 
@@ -353,8 +363,10 @@ module Nagios
   
   class Config
     include Cached
+    include Inspectable
 
     attr_reader :nagios
+    inspect_my :source
 
     def initialize(source, nagios)
       self.source = source
@@ -387,7 +399,7 @@ module Nagios
       svcs.each do |svc_def|
         host = by_tag[Host.tag][svc_def['host_name']]
         raise "No such host #{host}!" unless host
-        svc = Service.new(svc_def, host)
+        svc = Service.new(svc_def, self, host)
         host.services[svc.name] = svc
       end
       # make plural aliases
@@ -398,8 +410,10 @@ module Nagios
 
   class Status
     include Cached
+    include Inspectable
 
     attr_accessor :config, :services, :hosts_by, :services_by, :nagios
+    inspect_my :source
 
     def initialize(path, nagios)
       self.nagios = nagios
@@ -455,6 +469,8 @@ module Nagios
   end
 
   class CommandTarget
+    include Inspectable
+
     def initialize(cmd_f)
       @f = cmd_f
     end

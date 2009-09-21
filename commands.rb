@@ -20,7 +20,7 @@ module Molniya
       attr_accessor :cmd_text, :msg, :contact, :scanner, :sb, :client, :parent
 
       def self.cmd(word)
-        meta_def :cmd { word }
+        meta_def(:cmd) { word }
       end
 
       def invoke_child(klass, c_cmd_text)
@@ -37,26 +37,26 @@ module Molniya
     end
 
     class Status < Base
-      :cmd 'status'
+      cmd 'status'
       def invoke
-        client.send(msg.from, sb.status_report())
+        client.send_msg(msg.from, sb.status_report())
       end
     end
 
     class HostDetail < Base
       def invoke(host)
-        send(msg.from, host.detail(:xmpp))
+        client.send_msg(msg.from, host.detail(:xmpp))
       end
     end
 
     class ServiceDetail < Base
       def invoke(svc)
-        send(msg.from, svc.detail(:xmpp))
+        client.send_msg(msg.from, svc.detail(:xmpp))
       end
     end
 
     class Check < Base
-      :cmd 'check'
+      cmd 'check'
       def invoke
         scanner.skip(/\s*/) or raise 'syntax'
         case
@@ -76,7 +76,7 @@ module Molniya
     end
 
     class ReplyAck < Base
-      :cmd 'ack'
+      cmd 'ack'
 
       def invoke
         n_contact = sb.find_nagios_contact_with_jid(contact.jid)
@@ -93,7 +93,7 @@ module Molniya
     end
 
     class ReplyCheck < Base
-      :cmd 'check'
+      cmd 'check'
 
       def invoke
         sb.check(parent.n.referent, contact)
@@ -102,12 +102,14 @@ module Molniya
 
     class Reply < Base
       attr_accessor :n
-      :cmd /^@(\d)/
+      cmd /^@(\d)/
 
       SUB = [ReplyAck, ReplyCheck]
 
       def invoke
-        cmd_text =~ cmd || raise "inconsistent dispatch!"
+        unless cmd_text =~ cmd
+          raise "inconsistent dispatch!"
+        end
         n = contact.recent[$1.to_i]
         if n
           scanner.skip(/\s*/)
@@ -116,17 +118,17 @@ module Molniya
           if scmd_def
             invoke_child(scmd_def, scmd_w)
           else
-            client.send(msg.from, "Unknown reply command #{scmd_w}!")
+            client.send_msg(msg.from, "Unknown reply command #{scmd_w}!")
           end
         else
-          client.send(msg.from, "No record of notification #{$1}, sorry.")
+          client.send_msg(msg.from, "No record of notification #{$1}, sorry.")
           LOG.debug "Recent: #{contact.recent.inspect}"
         end        
       end
     end
 
     class Admin < Base
-      :cmd "admin"
+      cmd "admin"
 
       def invoke
         scanner.skip(/\s*/) or raise 'syntax'
@@ -159,7 +161,7 @@ module Molniya
     end
 
     class Eval < Base
-      :cmd "eval"
+      cmd "eval"
 
       def invoke
         ## TODO: conditionalize for debugging
@@ -169,7 +171,7 @@ module Molniya
     end
 
     class Help < Base
-      :cmd "help"
+      cmd "help"
 
       def invoke
         send(msg.from, <<EOF)

@@ -33,6 +33,7 @@ require 'xmpp4r/roster'
 require 'xmpp4r/xhtml'
 require 'yaml'
 
+require 'inspectable'
 require 'nagios'
 require 'commands'
 require 'formatting'
@@ -84,7 +85,9 @@ module Molniya
   end
 
   class Contact
+    include Inspectable
     attr_accessor :jid, :roster_item, :missed, :recent, :seq
+    inspect_my :jid
 
     def initialize(jid)
       @jid = jid
@@ -135,7 +138,9 @@ module Molniya
   end
 
   class XMPPClient
+    include Inspectable
     attr_accessor :sb, :client, :roster, :contacts, :inbox, :worker
+    inspect_my :client
 
     COMMAND_DEFS = [Commands::Status, Commands::Check, Commands::Reply,
                     Commands::Admin, Commands::Help]
@@ -152,7 +157,7 @@ module Molniya
         LOG.error e.backtrace.join("\n")
       end
       initial_connect()
-      LOG.info "Setting up roster helper."
+      LOG.debug "Setting up roster helper."
       @roster = Jabber::Roster::Helper.new(client)
       init_callbacks
       presence()
@@ -199,14 +204,16 @@ module Molniya
 
       ## roster callbacks are invoked in separate threads, just do stuff
       roster.add_presence_callback do |roster_item, old_pres, new_pres|
-        #LOG.debug "got presence for #{roster_item.inspect}: old #{old_pres}, new #{new_pres}"
+        # LOG.debug "got presence for #{roster_item.inspect}: old #{old_pres}, new #{new_pres}"
         jid = roster_item.jid.strip
         unless contacts.has_key? jid
           c = Contact.new(jid)
           c.roster_item = roster_item
           contacts[jid.to_s] = c
         end
-        if (! XMPP_AVAIL.member?(old_pres)) && XMPP_AVAIL.member?(new_pres)
+        if old_pres \
+          && (! XMPP_AVAIL.member?(old_pres.show)) \
+          && XMPP_AVAIL.member?(new_pres.show)
           # came online, catch up
           contact = contacts[jid]
           sb.catch_up(contact)
@@ -254,7 +261,7 @@ module Molniya
         ## TODO: check contact can_submit_commands property on writes
         cd = COMMAND_DEFS.find { |cd| cd.cmd === first }
         if cd
-          invoke_cmd(cd)
+          invoke_cmd(cd, first, msg, contact, scanner)
         else
           # not a recognized command, is it host or host/svc?
           host = sb.find_host(first)
@@ -262,9 +269,11 @@ module Molniya
             if scanner.scan(/\//)
               # host/svc
               svc = sb.resolve_service_name(host, scanner)
-              invoke_cmd(ServiceDetail, svc)
+              invoke_cmd(Commands::ServiceDetail,
+                         first, msg, contact, scanner, svc)
             else
-              invoke_cmd(HostDetail, host)
+              invoke_cmd(Commands::HostDetail,
+                         first, msg, contact, scanner, host)
             end
           else
             send(msg.from, "I\'m sorry, I didn\'t quite catch that?")
@@ -278,9 +287,9 @@ module Molniya
       end
     end
 
-    def invoke_cmd(cmd_def, *rest)
+    def invoke_cmd(cmd_def, cmd_text, msg, contact, scanner, *rest)
       cmd = cmd_def.new
-      cmd.cmd_text = first
+      cmd.cmd_text = cmd_text
       cmd.msg = msg
       cmd.contact = contact
       cmd.scanner = scanner
@@ -295,19 +304,8 @@ module Molniya
       client.send(Jabber::Presence.new(:chat, self.sb.status_msg))
     end
 
-    def send(jid, contents)
+    def send_msg(jid, contents)
       client.send(Jabber::Message.new(jid, contents))
-    end
-
-    def send_(jid, message)
-      if @contacts.has_key? jid
-        # existing contact
-        @im.deliver(jid, message)
-        return true
-      else
-        invite(jid)
-        return false
-      end
     end
 
     def invite(jid)
@@ -357,6 +355,7 @@ module Molniya
   end
 
   class NagiosInstance
+    include Inspectable
     ### thread-safe
 
     ## interesting commands
@@ -383,7 +382,7 @@ module Molniya
       nagios_var = Pathname.new(conf['nagios_var'])
       #log "Nagios /var is #{nagios_var}"
       @config = Nagios::Config.new(nagios_var + 'objects.cache', self)
-      @status = Nagios::Status.new(nagios_var + 'status.dat', @config)
+      @status = Nagios::Status.new(nagios_var + 'status.dat', self)
       @cmd_t = Nagios::CommandTarget.new(nagios_var + 'rw' + 'nagios.cmd')
     end
 
@@ -429,6 +428,8 @@ module Molniya
   end
 
   class WebApp < Sinatra::Base
+    include Inspectable
+
     attr_accessor :sb
 
     post '/contact/:cname/notify' do
@@ -438,13 +439,15 @@ module Molniya
     end
     
     post '/contact/:jid/send' do
-      sb.send(params[:jid], params[:message] || params['rack.input'].read)
+      sb.send_msg(params[:jid], params[:message] || params['rack.input'].read)
       status 204
     end
     
   end
 
   class Switchboard
+    include Inspectable
+
     attr_accessor :conf, :nagios, :xmpp, :http, :fmt, :status_msg, :uri
     attr_reader :http_worker
     # :smtp, :http
@@ -480,15 +483,16 @@ module Molniya
 
     def run
       interval = 30
+      LOG.info "Switchboard running."
       while true
-        sb.update_status_msg
-        sb.nagios.status.refresh_if_needed()
-        if sb.nagios.status.listeners?
+        update_status_msg()
+        nagios.status.refresh_if_needed()
+        if nagios.status.listeners?
           interval = 2
         else
           interval = 10
         end
-        sleep interval
+        sleep(interval)
       end
     end
 
@@ -548,13 +552,13 @@ module Molniya
     def check(item, notify=nil)
       req_t = Time.now
       ## force a check
-      item.check(req_t)
+      item.force_check(req_t)
       ## register if needed
       if notify
         nagios.status.register do |sv|
-          if item.last_check > req_t.to_i
+          if item.last_check > req_t
             ## got an update, report on it
-            xmpp.send(contact.jid, item.detail(:xmpp))
+            xmpp.send_msg(notify.jid, item.detail(:xmpp))
             ## deregister
             false
           else
@@ -569,7 +573,7 @@ module Molniya
       contacts = nagios.config.contents.contacts
       contact = contacts.fetch(contact_name)
       n.referent = find_notification_referent(n)
-      unless ref
+      unless n.referent
         raise "Couldn't find what notification referred to: #{n.inspect}"
       end
       policy_spec.split(';').each do |policy|
@@ -602,7 +606,7 @@ module Molniya
       end
       if x_contact.available?
         n.seq = x_contact.record_notification(n)
-        xmpp.send(jid, fmt[:xmpp].notification(n))
+        xmpp.send_msg(jid, fmt[:xmpp].notification(n))
         return true
       else
         x_contact.missed << n
@@ -619,50 +623,37 @@ module Molniya
       LOG.debug "Catching up with contact #{contact.jid}."
       if not contact.missed.empty?
         LOG.debug "Has #{contact.missed.length} missed notifications"
-        m_hosts = Set.new
-        m_svcs = Set.new
-        nh = nagios.config.contents.hosts
-        contact.missed.each do |n|
-          case n.ntype
-          when 'host'
-            host = nh[n.HOSTNAME]
-            if host.hard_state != :ok
-              m_hosts << host
-            end
-          when 'service'
-            svc = nh[n.HOSTNAME].services[n.SERVICEDESC]
-            if svc.hard_state != :ok
-              m_svcs << svc
-            end
-          else
-            raise "unexpected ntype in #{n.inspect}!"
-          end
-        end
+        ## TODO: filter just for problem notifications?
+        m_refs = contact.missed.find_all { |n| n.referent }.collect { |n| n.referent }
+        m_bad = m_refs.find_all { |ref| ref.hard_state != :ok }
+        m_hosts = Set.new(m_bad.find_all { |ref| ref.is_a? Nagios::Host })
+        m_svcs = Set.new(m_bad.find_all { |ref| ref.is_a? Nagios::Service })
         if (not m_hosts.empty?) || (not m_svcs.empty?)
           LOG.debug "Had problem notifications for existing problems."
+          ## TODO: use a proper formatting mechanism
           msg = "While you were out:\n"
           if not m_hosts.empty?
-            hmsg = m_hosts.classify { |h| h.hard_state }.sort.collect do |state, hosts|
+            hmsg = m_hosts.classify { |h| h.hard_state }.collect do |state, hosts|
               sprintf("%s: %s", state,
-                      hosts.collect { |h| h.name }.join(", "))
+                      hosts.sort.collect { |h| h.name }.join(", "))
             end.join("; ")
             msg << hmsg << "\n"
           end
           if not m_svcs.empty?
             smsg = m_svcs.classify { |s| s.hard_state }.sort.collect do |state, svcs|
               sprintf("%s: %s", state,
-                      svcs.collect { |s| "#{s.host.name}/#{s.name}" }.join(", "))
+                      svcs.sort.collect { |s| "#{s.host.name}/#{s.name}" }.join(", "))
             end.join("; ")
             msg << smsg << "\n"
           end
           LOG.debug "Sending message: #{msg}"
-          send(contact.jid, msg)
+          send_msg(contact.jid, msg)
         end
       end
     end
     
-    def send(jid, msg)
-      xmpp.send(jid, msg)
+    def send_msg(jid, msg)
+      xmpp.send_msg(jid, msg)
     end
 
     def email_notification(contact, to, n)
@@ -694,7 +685,6 @@ EOF
   def self.launch
     sb = Switchboard.new(YAML::load(File.read(ARGV[0])))
     sb.start
-    LOG.info "started switchboard."
     sb.run
   end
 end
