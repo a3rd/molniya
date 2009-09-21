@@ -1,6 +1,7 @@
 ## Molniya: an IM gateway for Nagios
 ##
-## Dedicated to Sergey Korolev.
+## Dedicated to Sergey Korolev, the Chief Designer,
+## and Boris Chertok, who wrote it all down for us.
 ##
 ## Copyright 2009 Windermere Services Company.
 ## By Clayton Wheeler, cswheeler@gmail.com
@@ -33,6 +34,8 @@ require 'xmpp4r/xhtml'
 require 'yaml'
 
 require 'nagios'
+require 'commands'
+require 'formatting'
 
 #### TODO
 # rosters
@@ -46,6 +49,7 @@ require 'nagios'
 
 module Molniya
 
+  SECOND = 1
   MINUTE = 60
   HOUR = 60 * MINUTE
   DAY = 24 * HOUR
@@ -54,7 +58,8 @@ module Molniya
   TSPEC = [[WEEK, 'w'],
            [DAY, 'd'],
            [HOUR, 'h'],
-           [MINUTE, 'm']]
+           [MINUTE, 'm'],
+           [SECOND, 's']]
 
   XMPP_AVAIL = [:chat, nil]
 
@@ -95,7 +100,7 @@ module Molniya
       end
       if roster_item.online?
         show = roster_item.presences.last.show
-        return XMPP_AVAIL.member? show
+        return XMPP_AVAIL.member?(show)
       else
         return false
       end
@@ -131,6 +136,9 @@ module Molniya
 
   class XMPPClient
     attr_accessor :sb, :client, :roster, :contacts, :inbox, :worker
+
+    COMMAND_DEFS = [Commands::Status, Commands::Check, Commands::Reply,
+                    Commands::Admin, Commands::Help]
 
     def initialize(sb)
       @sb = sb
@@ -197,7 +205,6 @@ module Molniya
           c = Contact.new(jid)
           c.roster_item = roster_item
           contacts[jid.to_s] = c
-          #log "registered contact for #{jid}"
         end
         if (! XMPP_AVAIL.member?(old_pres)) && XMPP_AVAIL.member?(new_pres)
           # came online, catch up
@@ -209,13 +216,6 @@ module Molniya
     end
 
     ### handle incoming XMPP traffic
-
-    # OLD
-    def update_status
-      @im.presence_updates.each do |jid, status, desc|
-        # @contacts[jid.strip].status = status
-      end
-    end
 
     def known_sender?(msg)
       # TODO
@@ -233,14 +233,9 @@ module Molniya
     end
 
     def handle_message(msg)
-      ## TODO: ack
-      ## TODO: check
       ## TODO: down
-      ## TODO: help
       ## TODO: ls
-      ## TODO: admin list-roster
-      ## TODO: admin unsubscribe
-      ## TODO: admin alias
+      ## TODO: admin alias (?? what was this supposed to be?)
       unless msg.body
         #LOG.debug "message with no body."
         return
@@ -257,94 +252,9 @@ module Molniya
       end
       begin
         ## TODO: check contact can_submit_commands property on writes
-        case first
-        when 'status'
-          send(msg.from, sb.status_report())
-        when 'check'
-          scanner.skip(/\s*/) or raise 'syntax'
-          # IWBNI we could register for notification of the check results...
-          case
-          when scanner.scan(/(\w+)\//)
-            # host/svc
-            host = sb.find_host(scanner[1]) or raise "Unknown host #{scanner[1]}"
-            svc = sb.resolve_service_name(host, scanner)
-            sb.check(svc)
-          when scanner.scan(/(\w+)/)
-            # host
-            host = sb.find_host(scanner[1]) or raise "Unknown host #{scanner[1]}"
-            sb.check(host)
-          else
-            raise 'syntax'
-          end
-        when /^@(\d)/
-          ## @2 whatever: reacting to a notification
-          n = contact.recent[$1.to_i]
-          if n
-            scanner.skip(/\s*/)
-            cmd = scanner.scan(/\w+/) or raise "Missing subcommand!"
-            case cmd
-            when 'ack'
-              n_contact = sb.find_nagios_contact_with_jid(contact.jid)
-              raise "No Nagios contact with JID #{contact.jid}?" unless n_contact
-              scanner.skip(/\s*/)
-              if scanner.scan_until(/\S.+/)
-                comment = scanner.matched
-              else
-                comment = "acknowledged."
-              end
-              sb.nagios.ack(n, n_contact, comment)
-            when 'check'
-              ref = sb.find_notification_referent(n)
-              unless ref
-                raise "Couldn't find what notification referred to: #{n.inspect}"
-              end
-              sb.nagios.check(ref)
-            end
-          else
-            send(msg.from, "No record of notification #{$1}, sorry.")
-            LOG.debug "Recent: #{contact.recent.inspect}"
-          end
-        when 'help'
-          send(msg.from, <<EOF)
-Nagios switchboard commands:
-status: get a status report
-check <host | host/svc>: force a check of the named host or service
-You can respond to a notification with its @ number, like so:
-@N ack [message]: acknowledge a host or service problem, with optional message
-@N check: force a check of the host or service referred to
-EOF
-        when 'eval'
-          ## disabled in public release for security reasons
-          ## TODO: conditionalize for debugging
-          #scanner.skip(/\s*/)
-          #send(msg.from, eval(scanner.rest()).inspect)
-        when 'admin'
-          scanner.skip(/\s*/) or raise 'syntax'
-          admin_cmd = scanner.scan(/\S+/)
-          scanner.skip(/\s*/)
-          case admin_cmd
-          when 'list-roster'
-            send(msg.from, "Roster: " + roster.items.keys.sort.join(", "))
-          when 'add'
-            if scanner.scan(/(\S+)\s+(\S+)/)
-              jid = scanner[0]
-              iname = scanner[1]
-              roster.add(Jabber::JID.new(jid), iname, true)
-              send(msg.from, "Added #{jid} (#{iname}) to roster and requested presence subscription.")
-            else
-              send(msg.from, "Usage: admin add <jid> <alias>")
-            end
-          when 'remove'
-            jid = scanner.scan(/\S+/)
-            if jid
-              roster[jid].remove()
-              send(msg.from, "Contact #{jid} successfully removed from roster.")
-            else
-              send(msg.from, "Usage: admin remove <jid>")
-            end
-          else
-            send(msg.from, "Unknown admin command #{admin_cmd}")
-          end
+        cd = COMMAND_DEFS.find { |cd| cd.cmd === first }
+        if cd
+          invoke_cmd(cd)
         else
           # not a recognized command, is it host or host/svc?
           host = sb.find_host(first)
@@ -352,10 +262,9 @@ EOF
             if scanner.scan(/\//)
               # host/svc
               svc = sb.resolve_service_name(host, scanner)
-              send(msg.from, sb.service_detail(svc))
+              invoke_cmd(ServiceDetail, svc)
             else
-              # TODO
-              send(msg.from, "Sorry, host details not implemented yet.")
+              invoke_cmd(HostDetail, host)
             end
           else
             send(msg.from, "I\'m sorry, I didn\'t quite catch that?")
@@ -367,6 +276,17 @@ EOF
         LOG.error $!
         LOG.error $!.backtrace.join("\n")
       end
+    end
+
+    def invoke_cmd(cmd_def, *rest)
+      cmd = cmd_def.new
+      cmd.cmd_text = first
+      cmd.msg = msg
+      cmd.contact = contact
+      cmd.scanner = scanner
+      cmd.sb = sb
+      cmd.client = self
+      cmd.invoke(*rest)
     end
 
     ### send messages
@@ -453,15 +373,16 @@ EOF
     # summarize dependencies in outages: 
     #   CRITICAL: host/some service and 8 dependent services
 
-    attr_accessor :conf, :last, :last_mtime, :config, :status
+    attr_accessor :conf, :last, :last_mtime, :config, :status, :sb, :cmd_t
 
-    def initialize(conf)
+    def initialize(conf, sb)
       @conf = conf
       @last = nil
       @last_mtime = nil
+      @sb = sb
       nagios_var = Pathname.new(conf['nagios_var'])
       #log "Nagios /var is #{nagios_var}"
-      @config = Nagios::Config.new(nagios_var + 'objects.cache')
+      @config = Nagios::Config.new(nagios_var + 'objects.cache', self)
       @status = Nagios::Status.new(nagios_var + 'status.dat', @config)
       @cmd_t = Nagios::CommandTarget.new(nagios_var + 'rw' + 'nagios.cmd')
     end
@@ -482,32 +403,6 @@ EOF
         end
       end      
       return report
-    end
-
-    def check(thing, at=Time.now)
-      thing.force_check(@cmd_t, at)
-    end
-
-    def ack(n, user, comment="acknowledged")
-      case n.ntype
-      when 'service'
-        @cmd_t.acknowledge_svc_problem(n.HOSTNAME,
-                                       n.SERVICEDESC,
-                                       0, # sticky
-                                       1, # notify
-                                       1, # persistent
-                                       user.name, # author
-                                       comment)
-      when 'host'
-        @cmd_t.acknowledge_host_problem(n.HOSTNAME,
-                                        0, # sticky
-                                        1, # notify
-                                        1, # persistent
-                                        user.name, # author
-                                        comment)
-      else
-        raise "unsupported ntype #{n.ntype}"
-      end
     end
 
     def base_uri
@@ -533,198 +428,6 @@ EOF
     end
   end
 
-  class BaseFormatter
-
-    def notification(data)
-      case data.ntype
-      when 'host'
-        return host_notify(data)
-      when 'service'
-        return service_notify(data)
-      else
-        raise "unhandled notification type #{data.ntype}!"
-      end
-    end
-
-  end
-
-  class XMPPFormatter < BaseFormatter
-
-    def host_notify(n)
-      # todo: eval
-      s = "@#{n.seq} #{n.NOTIFICATIONTYPE}: #{n.HOSTNAME} is #{n.HOSTSTATE}\n"
-      case n.NOTIFICATIONTYPE
-      when "PROBLEM", "RECOVERY"
-        s << "Info: #{n.HOSTOUTPUT}"
-      when "ACKNOWLEDGEMENT", "CUSTOM", "DOWNTIMESTART", "DOWNTIMEEND"
-        s << "Info: #{n.NOTIFICATIONCOMMENT}"
-      else
-        LOG.error "unexpected NOTIFICATIONTYPE: #{n.NOTIFICATIONTYPE}"
-      end
-      return s
-    end
-
-    def service_notify(n)
-      s = "@#{n.seq} #{n.NOTIFICATIONTYPE}: Service #{n.SERVICEDESC} on #{n.HOSTNAME} is #{n.SERVICESTATE}\n"
-      case n.NOTIFICATIONTYPE
-      when "PROBLEM", "RECOVERY"
-        s << "Info: #{n.SERVICEOUTPUT}"
-      when "ACKNOWLEDGEMENT", "CUSTOM", "DOWNTIMESTART", "DOWNTIMEEND"
-        s << "Info: #{n.NOTIFICATIONCOMMENT}"
-      else
-        LOG.error "unexpected NOTIFICATIONTYPE: #{n.NOTIFICATIONTYPE}"
-      end
-      return s
-    end
-
-    def service_state(s)
-      "#{s.name} for #{Molniya::brief_time_delta(s.last_ok)}"
-    end
-
-    def service_detail(svc)
-      "#{svc.name}: #{svc.soft_state.to_s.upcase} for #{Molniya::brief_time_delta(svc.last_ok)}\nInfo: #{svc.info}"
-      # TODO...
-    end
-
-    def host_detail(h)
-      "#{h.name}: #{h.soft_state.to_s.upcase} for #{Molniya::brief_time_delta(h.last_ok)}"
-    end
-
-    def status_message(s)
-      if not s[:services].empty?
-        s[:services].collect { |state, items| "#{items.size} #{state}" }.join(", ")
-      else
-        "All clear"
-      end
-    end
-
-    def status_report(s)
-      if not s.empty?
-        s.collect do |state, items|
-          sprintf("%s: %s",
-                  state.to_s.upcase,
-                  items.collect { |i| service_state(i) }.join("; "))
-        end.join("\n")
-      else
-        "All clear."
-      end
-    end
-  end
-
-  class XMPPHTMLFormatter < XMPPFormatter
-
-    attr_accessor :sb
-
-    def initialize(sb)
-      @sb = sb
-    end
-
-    def nagios
-      sb.nagios
-    end
-
-    def svc_link(svc)
-      a = REXML::Element.new 'a'
-      a.attributes['href'] = nagios.service_uri(svc.host.name,
-                                                svc.desc)
-      a.text = svc.name
-      return a
-    end
-    
-    def host_svc_link(svc)
-      s = REXML::Element.new 'span'
-      h = s.add_element 'a', { 'href' => nagios.status_uri(svc.host.name) }
-      h.text = svc.host.name
-      s.add_text '/'
-      sa = s.add_element 'a', { 'href' => nagios.service_uri(svc.host.name,
-                                                             svc.name) }
-      sa.text = svc.name
-      return s
-    end
-    
-    def service_notify(n)
-      # "#{n.NOTIFICATIONTYPE}: Service #{n.SERVICEDESC} on #{n.HOSTNAME} is #{n.SERVICESTATE}\nInfo: #{n.SERVICEOUTPUT}"
-      host = sb.find_host(n.HOSTNAME)
-      unless host
-        raise "Notification for #{n.HOSTNAME} but could not find host definition!"
-      end
-      svc = host.services.fetch(n.SERVICEDESC)
-      div = REXML::Element.new('div')
-      div.add_text "@#{n.seq} "
-      div.add_text "#{n.NOTIFICATIONTYPE}: Service "
-      div.elements << host_svc_link(svc)
-      div.add_text " is #{n.SERVICESTATE}\n"
-      div.add_text "Info: #{n.SERVICEOUTPUT}"
-      return div
-    end
-
-    def service_detail(svc)
-      div = REXML::Element.new('div')
-      div.elements << host_svc_link(svc)
-      div.add_text ": #{svc.soft_state.to_s.upcase} "
-      div.add_text "for #{Molniya::brief_time_delta(svc.last_ok)}\nInfo: #{svc.info}"
-      return div
-    end
-    
-    def service_state(s)
-      span = REXML::Element.new('span')
-      span << host_svc_link(s)
-      span.add_text " for "
-      span.add_text Molniya::brief_time_delta(s.last_ok)
-      return span
-    end
-
-    def status_report(s)
-      if not s[:services].empty?
-        div = REXML::Element.new 'div'
-        s[:services].each do |state, items|
-          sd = div.add_element 'div'
-          sd.add_text "#{state.to_s.upcase}: "
-          items.each do |i|
-            sd << service_state(i)
-            if i != items.last
-              sd.add_text "; "
-            end
-          end
-          sd.add_element 'br'
-        end
-        html = Jabber::XHTML::HTML.new(div)
-        #return [html.to_text, html]
-        return html
-      else
-        "All clear."
-      end
-    end
-    
-  end
-
-  class EmailFormatter < BaseFormatter
-
-    def host_notify(n)
-      # todo: eval
-      "#{n.NOTIFICATIONTYPE}: #{n.HOSTNAME} is #{n.HOSTSTATE}\nInfo: #{n.HOSTOUTPUT}"
-    end
-
-    def service_notify(n)
-      "#{n.NOTIFICATIONTYPE}: Service #{n.SERVICEDESC} on #{n.HOSTNAME} is #{n.SERVICESTATE}\nInfo: #{n.SERVICEOUTPUT}"
-    end
-
-  end
-
-  class EmailSubjectFormatter < BaseFormatter
-
-    def host_notify(n)
-      # todo: eval
-      "#{n.NOTIFICATIONTYPE}: #{n.HOSTNAME} is #{n.HOSTSTATE}\nInfo: #{n.HOSTOUTPUT}"
-    end
-
-    def service_notify(n)
-      "#{n.NOTIFICATIONTYPE}: Service #{n.SERVICEDESC} on #{n.HOSTNAME} is #{n.SERVICESTATE}\nInfo: #{n.SERVICEOUTPUT}"
-    end
-
-  end
-
-
   class WebApp < Sinatra::Base
     attr_accessor :sb
 
@@ -748,7 +451,15 @@ EOF
     
     def initialize(conf)
       @conf = conf
-      @nagios = NagiosInstance.new(conf)
+      if conf.has_key? :log_config
+        Molniya.const_set(:LOG, Logger.new(*conf[:log_config]))
+      elsif conf.has_key? :log_file
+        Molniya.const_set(:LOG, Logger.new(conf[:log_file], 'daily'))
+      end
+      if conf.has_key? :log_level
+        LOG.level = Logger.const_get(conf[:log_level])
+      end
+      @nagios = NagiosInstance.new(conf, self)
       @fmt = {
         :xmpp => XMPPHTMLFormatter.new(self),
         :email => EmailFormatter.new,
@@ -765,6 +476,20 @@ EOF
       xmpp.start_worker()
       LOG.debug "Starting HTTP server."
       @http_worker = Thread.new { Rack::Handler::Mongrel.run(@http, @conf['http_opts']) }
+    end
+
+    def run
+      interval = 30
+      while true
+        sb.update_status_msg
+        sb.nagios.status.refresh_if_needed()
+        if sb.nagios.status.listeners?
+          interval = 2
+        else
+          interval = 10
+        end
+        sleep interval
+      end
     end
 
     def is_xmpp_contact?(addr)
@@ -820,17 +545,33 @@ EOF
       fmt[:xmpp].status_report(nagios.status_report())
     end
 
-    def service_detail(service)
-      fmt[:xmpp].service_detail(service)
-    end
-
-    def check(item)
-      nagios.check(item)
+    def check(item, notify=nil)
+      req_t = Time.now
+      ## force a check
+      item.check(req_t)
+      ## register if needed
+      if notify
+        nagios.status.register do |sv|
+          if item.last_check > req_t.to_i
+            ## got an update, report on it
+            xmpp.send(contact.jid, item.detail(:xmpp))
+            ## deregister
+            false
+          else
+            ## no update yet, stay registered
+            true
+          end
+        end
+      end
     end
 
     def notification(contact_name, policy_spec, n)
       contacts = nagios.config.contents.contacts
       contact = contacts.fetch(contact_name)
+      n.referent = find_notification_referent(n)
+      unless ref
+        raise "Couldn't find what notification referred to: #{n.inspect}"
+      end
       policy_spec.split(';').each do |policy|
         case policy
         when 'xmpp'
@@ -850,12 +591,10 @@ EOF
     end
 
     def xmpp_notification(contact, n)
-      # log "Extracting XMPP field #{conf['xmpp_field'].inspect} from contact #{contact.name} with props #{contact.props.inspect}"
       jid = contact.props[conf['xmpp_field']]
       unless jid
         raise "Contact #{contact.name} does not have a JID in #{conf['xmpp_field']}: props #{contact.props.inspect}"
       end
-      #log "XMPP contacts: #{xmpp.contacts.inspect}"
       x_contact = xmpp.contacts[jid]
       unless x_contact
         LOG.warn "no contact with jid #{jid}, not sending message"
@@ -871,17 +610,19 @@ EOF
       end
     end
 
-    def catch_up(x_contact)
+    def catch_up(contact)
       ## just came online
       # TODO
       # while you were away:
       # for each host/service with a problem notification:
       #   if it's not OK now, notify
-      if not x_contact.missed.empty?
+      LOG.debug "Catching up with contact #{contact.jid}."
+      if not contact.missed.empty?
+        LOG.debug "Has #{contact.missed.length} missed notifications"
         m_hosts = Set.new
         m_svcs = Set.new
         nh = nagios.config.contents.hosts
-        x_contact.missed.each do |n|
+        contact.missed.each do |n|
           case n.ntype
           when 'host'
             host = nh[n.HOSTNAME]
@@ -898,6 +639,7 @@ EOF
           end
         end
         if (not m_hosts.empty?) || (not m_svcs.empty?)
+          LOG.debug "Had problem notifications for existing problems."
           msg = "While you were out:\n"
           if not m_hosts.empty?
             hmsg = m_hosts.classify { |h| h.hard_state }.sort.collect do |state, hosts|
@@ -913,7 +655,8 @@ EOF
             end.join("; ")
             msg << smsg << "\n"
           end
-          send(x_contact.jid, msg)
+          LOG.debug "Sending message: #{msg}"
+          send(contact.jid, msg)
         end
       end
     end
@@ -952,10 +695,7 @@ EOF
     sb = Switchboard.new(YAML::load(File.read(ARGV[0])))
     sb.start
     LOG.info "started switchboard."
-    while true
-      sleep 30
-      sb.update_status_msg
-    end
+    sb.run
   end
 end
 

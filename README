@@ -70,6 +70,5 @@ The XHTML-IM usage is problematic with some IM clients.
 
 TODO:
  * Provide SMF manifest (and init script) for running as a service.
- * Set up reasonable logging instead of writing everything to stderr.
  * Refactor the incredibly primitive command handling.
  * Improve many aspects of the code.
