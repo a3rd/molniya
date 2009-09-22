@@ -15,4 +15,4 @@
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ## General Public License for more details.
 
-ruby -rubygems -rmolniya -e 'Molniya::launch()' $*
+ruby -rubygems -rmolniya -e 'Molniya::launch()' -- $*
