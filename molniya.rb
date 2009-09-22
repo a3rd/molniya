@@ -568,8 +568,6 @@ module Molniya
     end
 
     def update_status_msg
-      nagios.config.refresh_if_needed()
-      nagios.status.refresh_if_needed()
       @status_msg = fmt[:xmpp].status_message(nagios.status_report())
       if xmpp
         xmpp.presence()
