@@ -284,7 +284,7 @@ module Nagios
     end
 
     def detail(fmt)
-      cfg.nagios.sb.fmt[fmt].service_detail(self)
+      cfg.nagios.sb.fmt[fmt].host_detail(self)
     end
 
     def to_s
