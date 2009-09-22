@@ -2,6 +2,12 @@ Molniya is an instant messaging interface for Nagios. It relays alerts
 to Nagios contacts in a convenient way; it also allows you to ask for
 a status report, force checks, acknowledge faults, and more.
 
+Copyright 2009 Windermere Services Company.
+By Clayton Wheeler.
+Released under version 2 of the GPL; see LICENSE.
+
+Home page: http://code.google.com/p/molniya/
+
 Requirements:
  * A Unix/Linux system running Nagios 3.
  * An XMPP server and user account; Google Talk works.
@@ -64,11 +70,5 @@ environments but this is untested so far; let me know how it works out
 for you.
 
 
-Bugs:
-
-The XHTML-IM usage is problematic with some IM clients.
-
-TODO:
- * Provide SMF manifest (and init script) for running as a service.
- * Refactor the incredibly primitive command handling.
- * Improve many aspects of the code.
+Refer to the Google Code site for more information on usage,
+outstanding bugs, development roadmap, etc.
