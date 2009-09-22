@@ -38,8 +38,11 @@ module Molniya
 
     class Status < Base
       cmd 'status'
+
       def invoke
-        client.send_msg(msg.from, sb.status_report())
+        report = sb.nagios.status_report()
+        client.send_msg(msg.from,
+                        sb.fmt[:xmpp].status_report(report))
       end
     end
 
@@ -136,26 +139,27 @@ module Molniya
         scanner.skip(/\s*/)
         case admin_cmd
         when 'list-roster'
-          send(msg.from, "Roster: " + roster.items.keys.sort.join(", "))
+          client.send_msg(msg.from,
+                          "Roster: " + roster.items.keys.sort.join(", "))
         when 'add'
           if scanner.scan(/(\S+)\s+(\S+)/)
             jid = scanner[0]
             iname = scanner[1]
             roster.add(Jabber::JID.new(jid), iname, true)
-            send(msg.from, "Added #{jid} (#{iname}) to roster and requested presence subscription.")
+            client.send_msg(msg.from, "Added #{jid} (#{iname}) to roster and requested presence subscription.")
           else
-            send(msg.from, "Usage: admin add <jid> <alias>")
+            client.send_msg(msg.from, "Usage: admin add <jid> <alias>")
           end
         when 'remove'
           jid = scanner.scan(/\S+/)
           if jid
             roster[jid].remove()
-            send(msg.from, "Contact #{jid} successfully removed from roster.")
+            client.send_msg(msg.from, "Contact #{jid} successfully removed from roster.")
           else
-            send(msg.from, "Usage: admin remove <jid>")
+            client.send_msg(msg.from, "Usage: admin remove <jid>")
           end
         else
-          send(msg.from, "Unknown admin command #{admin_cmd}")
+          client.send_msg(msg.from, "Unknown admin command #{admin_cmd}")
         end
       end
     end
@@ -166,7 +170,17 @@ module Molniya
       def invoke
         ## TODO: conditionalize for debugging
         scanner.skip(/\s*/)
-        send(msg.from, eval(scanner.rest()).inspect)
+        expr = scanner.rest()
+        LOG.debug "evaluating expression: #{expr.inspect}"
+        
+        begin
+          result = eval(expr).to_s
+        rescue Exception => e
+          $stderr.puts "ERROR: #{e}"
+          result = "ERROR: #{e}"
+        end
+        LOG.debug "got: #{result.inspect}"
+        client.send_msg(msg.from, result)
       end
     end
 
@@ -174,7 +188,7 @@ module Molniya
       cmd "help"
 
       def invoke
-        send(msg.from, <<EOF)
+        client.send_msg(msg.from, <<EOF)
 Nagios switchboard commands:
 status: get a status report
 check <host | host/svc>: force a check of the named host or service

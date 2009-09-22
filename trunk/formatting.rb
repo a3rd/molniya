@@ -71,10 +71,12 @@ module Molniya
     end
 
     def status_message(s)
-      if not s[:services].empty?
-        s[:services].collect { |state, items| "#{items.size} #{state}" }.join(", ")
-      else
+      counts = Hash.new { |h, k| h[k] = 0 }
+      s.values.each { |v| v.each { |state, items| counts[state] += items.size } }
+      if counts.empty?
         "All clear"
+      else
+        counts.collect { |state, count| "#{count} #{state}" }.join(", ")
       end
     end
 
@@ -103,6 +105,13 @@ module Molniya
       sb.nagios
     end
 
+    def host_link(host)
+      a = REXML::Element.new 'a'
+      a.attributes['href'] = nagios.status_uri(host.name)
+      a.text = host.name
+      return a
+    end
+
     def svc_link(svc)
       a = REXML::Element.new 'a'
       a.attributes['href'] = nagios.service_uri(svc.host.name,
@@ -121,7 +130,7 @@ module Molniya
       sa.text = svc.name
       return s
     end
-    
+
     def service_notify(n)
       # "#{n.NOTIFICATIONTYPE}: Service #{n.SERVICEDESC} on #{n.HOSTNAME} is #{n.SERVICESTATE}\nInfo: #{n.SERVICEOUTPUT}"
       svc = n.referent
@@ -141,7 +150,15 @@ module Molniya
       div.add_text "for #{Molniya::brief_time_delta(svc.last_ok)}\nInfo: #{svc.info}"
       return div
     end
-    
+
+    def service_state(s)
+      span = REXML::Element.new('span')
+      span << host_svc_link(s)
+      span.add_text " for "
+      span.add_text Molniya::brief_time_delta(s.last_ok)
+      return span
+    end
+
     def service_state(s)
       span = REXML::Element.new('span')
       span << host_svc_link(s)
@@ -151,18 +168,22 @@ module Molniya
     end
 
     def status_report(s)
-      if not s[:services].empty?
+      if (not s[:services].empty?) or (not s[:hosts].empty?)
+        ## headings and sorting could stand some improvement
         div = REXML::Element.new 'div'
-        s[:services].each do |state, items|
-          sd = div.add_element 'div'
+        (s[:hosts] + s[:services]).each do |state, items_r|
+          items = items_r.to_a.sort
+          sd = div.add_element('div')
           sd.add_text "#{state.to_s.upcase}: "
           items.each do |i|
-            sd << service_state(i)
+            sd << i.link(self)
+            sd.add_text(" for ")
+            sd.add_text(Molniya::brief_time_delta(i.last_ok))
             if i != items.last
-              sd.add_text "; "
+              sd.add_text("; ")
             end
           end
-          sd.add_element 'br'
+          sd.add_element('br')
         end
         html = Jabber::XHTML::HTML.new(div)
         #return [html.to_text, html]

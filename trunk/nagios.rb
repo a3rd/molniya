@@ -275,6 +275,10 @@ module Nagios
       HOST_STATE_SYMS[v]
     end
 
+    def link(fmt)
+      fmt.host_link(self)
+    end
+
     def <=>(other)
       name <=> other.name
     end
@@ -308,6 +312,10 @@ module Nagios
       'service_description'
     end
 
+    def host_name
+      host.name
+    end
+
     def acknowledge(opts_a)
       opts = { :sticky => 0, :notify => 1, :persistent => 1 }
       opts.merge! opts_a
@@ -328,6 +336,10 @@ module Nagios
 
     def state_sym(v)
       SVC_STATE_SYMS[v]
+    end
+
+    def link(fmt)
+      fmt.host_svc_link(self)
     end
 
     def <=>(other)
