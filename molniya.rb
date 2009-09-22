@@ -143,7 +143,7 @@ module Molniya
     inspect_my :client
 
     COMMAND_DEFS = [Commands::Status, Commands::Check, Commands::Reply,
-                    Commands::Admin, Commands::Help]
+                    Commands::Admin, Commands::Help, Commands::Eval]
 
     def initialize(sb)
       @sb = sb
@@ -261,6 +261,7 @@ module Molniya
         ## TODO: check contact can_submit_commands property on writes
         cd = COMMAND_DEFS.find { |cd| cd.cmd === first }
         if cd
+          LOG.debug "invoking command: #{cd}"
           invoke_cmd(cd, first, msg, contact, scanner)
         else
           # not a recognized command, is it host or host/svc?
@@ -276,14 +277,15 @@ module Molniya
                          first, msg, contact, scanner, host)
             end
           else
-            send(msg.from, "I\'m sorry, I didn\'t quite catch that?")
+            send_msg(msg.from,
+                     "I\'m sorry, I didn\'t quite catch that?")
           end
         end
-      rescue
-        send(msg.from, "Oops. #{$!}")
+      rescue Exception => e
+        send_msg(msg.from, "Oops. #{e}")
         #raise
-        LOG.error $!
-        LOG.error $!.backtrace.join("\n")
+        LOG.error e
+        LOG.error e.backtrace.join("\n")
       end
     end
 
@@ -305,6 +307,7 @@ module Molniya
     end
 
     def send_msg(jid, contents)
+      LOG.debug "sending message to #{jid}: #{contents}"
       client.send(Jabber::Message.new(jid, contents))
     end
 
@@ -317,7 +320,7 @@ module Molniya
       if @contacts.has_key? jid
         # existing contact
         if online?(jid)
-          return send(jid, message)
+          return send_msg(jid, message)
         else
           LOG.debug "#{jid} is #{status}, not sending"
           return false
@@ -335,19 +338,28 @@ module Molniya
     def run()
       LOG.debug "Beginning XMPP message processing."
       while true
-        item = inbox.pop()
-        type = item[0]
-        case type
-        when :message
-          msg = item[1]
-          if known_sender?(msg)
-            LOG.debug "received message: #{msg}"
-            handle_message(msg)
+        msg = nil
+        begin
+          item = inbox.pop()
+          type = item[0]
+          case type
+          when :message
+            msg = item[1]
+            if known_sender?(msg)
+              LOG.debug "received message: #{msg}"
+              handle_message(msg)
+            else
+              LOG.warn "message from unknown sender: #{msg}"
+            end
           else
-            LOG.warn "message from unknown sender: #{msg}"
+            LOG.error "unhandled inbox item: #{item.inspect}"
           end
-        else
-          LOG.error "unhandled inbox item: #{item.inspect}"
+        rescue Exception => e
+          LOG.error e
+          LOG.error e.backtrace.join("\n")
+          if msg
+            client.send_msg(msg.from, "Oops. #{e}")
+          end
         end
       end
     end
@@ -386,22 +398,23 @@ module Molniya
       @cmd_t = Nagios::CommandTarget.new(nagios_var + 'rw' + 'nagios.cmd')
     end
 
+    SVC_PROBLEMS = [:critical, :warning, :unknown]
+    
     def status_report()
-      s = status.contents()
-      report = { :hosts => [], :services => [] }
-      [:down, :unreachable].each do |status|
-        hosts = s.hosts_by[status]
-        unless hosts.empty?
-          report[:hosts] << [status, hosts]
+      ok_hosts, bad_hosts =
+        config.contents.hosts.values.partition { |h| h.cur_state == :ok }
+      hosts = Set.new(bad_hosts)
+      hosts_c = hosts.classify { |h| h.cur_state }
+      problem_svcs = ok_hosts.collect do |h|
+        h.services.values.find_all do |s|
+          SVC_PROBLEMS.include? s.cur_state
         end
-      end
-      [:critical, :warning, :unknown].each do |status|
-        svcs = s.services_by[status]
-        unless svcs.empty?
-          report[:services] << [status, svcs]
-        end
-      end      
-      return report
+      end.flatten.to_set
+      svcs_c = problem_svcs.classify { |s| s.cur_state }
+      return {
+        :hosts => hosts_c.to_a,
+        :services => svcs_c.to_a
+      }
     end
 
     def base_uri
@@ -485,8 +498,10 @@ module Molniya
       interval = 30
       LOG.info "Switchboard running."
       while true
+        unless xmpp.worker.alive?
+          raise "XMPPClient worker thread died!"
+        end
         update_status_msg()
-        nagios.status.refresh_if_needed()
         if nagios.status.listeners?
           interval = 2
         else
@@ -539,14 +554,12 @@ module Molniya
     end
 
     def update_status_msg
+      nagios.config.refresh_if_needed()
+      nagios.status.refresh_if_needed()
       @status_msg = fmt[:xmpp].status_message(nagios.status_report())
       if xmpp
         xmpp.presence()
       end
-    end
-
-    def status_report
-      fmt[:xmpp].status_report(nagios.status_report())
     end
 
     def check(item, notify=nil)
