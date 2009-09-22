@@ -191,7 +191,9 @@ module Molniya
         client.send_msg(msg.from, <<EOF)
 Nagios switchboard commands:
 status: get a status report
+<host | host/svc>: get details on the named host or srevice
 check <host | host/svc>: force a check of the named host or service
+ack <host | host/svc> [message]: acknowledge a host or service problem, with optional message
 You can respond to a notification with its @ number, like so:
 @N ack [message]: acknowledge a host or service problem, with optional message
 @N check: force a check of the host or service referred to

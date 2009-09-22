@@ -261,7 +261,7 @@ module Molniya
         ## TODO: check contact can_submit_commands property on writes
         cd = COMMAND_DEFS.find { |cd| cd.cmd === first }
         if cd
-          LOG.debug "invoking command: #{cd}"
+          #LOG.debug "invoking command: #{cd}"
           invoke_cmd(cd, first, msg, contact, scanner)
         else
           # not a recognized command, is it host or host/svc?
@@ -307,7 +307,7 @@ module Molniya
     end
 
     def send_msg(jid, contents)
-      LOG.debug "sending message to #{jid}: #{contents}"
+      #LOG.debug "sending message to #{jid}: #{contents}"
       client.send(Jabber::Message.new(jid, contents))
     end
 
@@ -346,7 +346,7 @@ module Molniya
           when :message
             msg = item[1]
             if known_sender?(msg)
-              LOG.debug "received message: #{msg}"
+              #LOG.debug "received message: #{msg}"
               handle_message(msg)
             else
               LOG.warn "message from unknown sender: #{msg}"
