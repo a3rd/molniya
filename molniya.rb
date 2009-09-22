@@ -16,14 +16,15 @@
 ## General Public License for more details.
 
 require 'logger'
-require 'timeout'
-require 'thread'
+require 'net/smtp'
+require 'optparse'
 require 'ostruct'
 require 'pathname'
-require 'net/smtp'
 require 'rexml/document'
 require 'set'
 require 'strscan'
+require 'thread'
+require 'timeout'
 require 'uri'
 
 require 'rack'
@@ -140,16 +141,21 @@ module Molniya
   class XMPPClient
     include Inspectable
     attr_accessor :sb, :client, :roster, :contacts, :inbox, :worker
+    attr_reader :command_defs
     inspect_my :client
 
-    COMMAND_DEFS = [Commands::Status, Commands::Check, Commands::Reply,
-                    Commands::Admin, Commands::Help, Commands::Eval]
+    BASE_COMMAND_DEFS = [Commands::Status, Commands::Check, Commands::Reply,
+                         Commands::Admin, Commands::Help]
 
     def initialize(sb)
       @sb = sb
       @contacts = {} # Hash.new {|h, jid| h[jid] = Contact.new(jid)}
       @inbox = Queue.new
       @client = Jabber::Client.new(sb.conf['username'])
+      @command_defs = BASE_COMMAND_DEFS.clone
+      if sb.options.eval
+        command_defs << Commands::Eval
+      end
       # @client = TraceClient.new(sb.conf['username'])
       LOG.info "Connecting to XMPP server..."
       client.on_exception do |e, client, where|
@@ -219,7 +225,7 @@ module Molniya
         old_p = presence_sym(old_pres)
         new_p = presence_sym(new_pres)
         jid = roster_item.jid.strip
-        LOG.debug "got presence for #{jid}: old #{old_p}, new #{new_p}"
+        #LOG.debug "got presence for #{jid}: old #{old_p}, new #{new_p}"
         unless contacts.has_key? jid
           c = Contact.new(jid)
           c.roster_item = roster_item
@@ -273,7 +279,7 @@ module Molniya
       end
       begin
         ## TODO: check contact can_submit_commands property on writes
-        cd = COMMAND_DEFS.find { |cd| cd.cmd === first }
+        cd = command_defs.find { |cd| cd.cmd === first }
         if cd
           #LOG.debug "invoking command: #{cd}"
           invoke_cmd(cd, first, msg, contact, scanner)
@@ -476,10 +482,13 @@ module Molniya
     include Inspectable
 
     attr_accessor :conf, :nagios, :xmpp, :http, :fmt, :status_msg, :uri
+    attr_accessor :options
     attr_reader :http_worker
     # :smtp, :http
     
-    def initialize(conf)
+    def initialize(options)
+      @options = options
+      conf = YAML::load(File.read(options.config))
       @conf = conf
       if conf.has_key? :log_config
         Molniya.const_set(:LOG, Logger.new(*conf[:log_config]))
@@ -649,17 +658,20 @@ module Molniya
       if not contact.missed.empty?
         LOG.debug "Has #{contact.missed.length} missed notifications"
         ## TODO: filter just for problem notifications?
-        m_refs = contact.missed.find_all { |n| n.referent }.collect { |n| n.referent }
-        m_bad = m_refs.find_all { |ref| ref.hard_state != :ok }
-        m_hosts = Set.new(m_bad.find_all { |ref| ref.is_a? Nagios::Host })
-        m_svcs = Set.new(m_bad.find_all { |ref| ref.is_a? Nagios::Service })
+        m_bad = contact.missed.collect { |n| find_notification_referent(n) } \
+          .reject { |ref| ! ref } \
+          .reject { |ref| ref.hard_state == :ok } \
+          .to_set \
+          .classify { |ref| ref.class }
+        m_hosts = m_bad[Nagios::Host]
+        m_svcs = m_bad[Nagios::Service]
         if (not m_hosts.empty?) || (not m_svcs.empty?)
           LOG.debug "Had problem notifications for existing problems."
           ## TODO: use a proper formatting mechanism
           msg = "While you were out:\n"
           if not m_hosts.empty?
             hmsg = m_hosts.classify { |h| h.hard_state }.collect do |state, hosts|
-              sprintf("%s: %s", state,
+              sprintf("%s: %s", state.to_s.upcase,
                       hosts.sort.collect { |h| h.name }.join(", "))
             end.join("; ")
             msg << hmsg << "\n"
@@ -708,7 +720,29 @@ EOF
   end
 
   def self.launch
-    sb = Switchboard.new(YAML::load(File.read(ARGV[0])))
+    options = OpenStruct.new
+    options.eval = false
+    opt_p = OptionParser.new do |opts|
+      opts.banner = "Usage: molniya [options]"
+      opts.separator "Required options:"
+      opts.on("-c", "--config FILE", "Configuration file") do |config|
+        options.config = config
+      end
+      opts.separator "Optional:"
+      opts.on("-e", "--[no-]eval", "Enable 'eval' command") do |e|
+        options.eval = e
+      end
+      opts.on_tail("-h", "--help", "Show this message") do
+        puts opts
+        exit 1
+      end
+    end
+    opt_p.parse!
+    unless options.config
+      puts opt_p
+      exit 1
+    end
+    sb = Switchboard.new(options)
     sb.start
     sb.run
   end
