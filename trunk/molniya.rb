@@ -62,7 +62,7 @@ module Molniya
            [MINUTE, 'm'],
            [SECOND, 's']]
 
-  XMPP_AVAIL = [:chat, nil]
+  XMPP_AVAIL = [:chat, :available]
 
   LOG = Logger.new(STDERR)
 
@@ -198,22 +198,36 @@ module Molniya
       #end
     end
 
+    def presence_sym(p)
+      if p
+        if p.type == :unavailable
+          :unavailable
+        else
+          p.show || :available
+        end
+      else
+        :unavailable
+      end
+    end
+
     def init_callbacks
       ## client callbacks are invoked in parser thread, must enqueue
       client.add_message_callback { |msg| enqueue_in([:message, msg]) }
 
       ## roster callbacks are invoked in separate threads, just do stuff
       roster.add_presence_callback do |roster_item, old_pres, new_pres|
-        # LOG.debug "got presence for #{roster_item.inspect}: old #{old_pres}, new #{new_pres}"
+        old_p = presence_sym(old_pres)
+        new_p = presence_sym(new_pres)
         jid = roster_item.jid.strip
+        LOG.debug "got presence for #{jid}: old #{old_p}, new #{new_p}"
         unless contacts.has_key? jid
           c = Contact.new(jid)
           c.roster_item = roster_item
           contacts[jid.to_s] = c
         end
         if old_pres \
-          && (! XMPP_AVAIL.member?(old_pres.show)) \
-          && XMPP_AVAIL.member?(new_pres.show)
+          && (! XMPP_AVAIL.member?(old_p)) \
+          && XMPP_AVAIL.member?(new_p)
           # came online, catch up
           contact = contacts[jid]
           sb.catch_up(contact)
@@ -653,7 +667,7 @@ module Molniya
             msg << hmsg << "\n"
           end
           if not m_svcs.empty?
-            smsg = m_svcs.classify { |s| s.hard_state }.sort.collect do |state, svcs|
+            smsg = m_svcs.classify { |s| s.hard_state }.collect do |state, svcs|
               sprintf("%s: %s", state,
                       svcs.sort.collect { |s| "#{s.host.name}/#{s.name}" }.join(", "))
             end.join("; ")
