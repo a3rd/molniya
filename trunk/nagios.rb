@@ -14,6 +14,7 @@
 
 require 'thread'
 require 'metaid'
+require 'monitor'
 require 'rexml/document'
 require 'set'
 require 'ostruct'
@@ -115,18 +116,43 @@ module Nagios
     attr_accessor :source
 
     def init_mutex
-      @mutex = Mutex.new
+      @mutex = Monitor.new
       @listeners = []
     end
 
     def refresh_if_needed()
       @mutex.synchronize do 
         if (not @contents) || (not @mtime) || (source.mtime > @mtime)
-          mtime = source.mtime
-          self.contents = load(parse())
-          @mtime = mtime
+          _refresh()
         end
       end
+    end
+
+    def wait_and_refresh(newer, timeout)
+      @mutex.synchronize do
+        now = Time.now
+        timeout_t = now + timeout
+        refreshed = false
+        while (! refreshed) && now < timeout_t
+          if source.mtime >= newer
+            _refresh()
+            refreshed = true
+          else
+            sleep 1
+            now = Time.now
+          end
+        end
+        unless refreshed
+          raise "Timed out waiting to refresh #{source} with a newer version than #{newer}"
+        end
+      end
+    end
+
+    def _refresh()
+      # $stderr.puts "Parsing #{source}: #{source.size} bytes, mtime #{source.mtime}"
+      mtime = source.mtime
+      self.contents = load(parse())
+      @mtime = mtime
     end
 
     def contents()
@@ -388,6 +414,11 @@ module Nagios
 
     def sb
       nagios.sb
+    end
+
+    def _refresh()
+      super()
+      nagios.status.wait_and_refresh(@mtime, 60)
     end
 
     def parse()
