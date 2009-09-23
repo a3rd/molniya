@@ -16,7 +16,7 @@ Right now, Molniya is designated 0.1. That's probably a bit low, considering tha
  * Test on Linux. [http://code.google.com/p/molniya/issues/detail?id=5 Issue 5]
  * Provide [http://code.google.com/p/molniya/issues/detail?id=7 SMF manifest] and [http://code.google.com/p/molniya/issues/detail?id=8 init script] for Solaris and Linux respectively.
 
-[http://code.google.com/p/molniya/issues/list?can=2&q=label%3AMilestone-Release1.0 All oustanding issues]
+[http://code.google.com/p/molniya/issues/list?can=2&q=label%3AMilestone-Release1.0 All outstanding issues]
 
 = Past 1.0 =
 
