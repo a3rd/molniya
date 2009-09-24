@@ -663,8 +663,8 @@ module Molniya
           .reject { |ref| ref.hard_state == :ok } \
           .to_set \
           .classify { |ref| ref.class }
-        m_hosts = m_bad[Nagios::Host]
-        m_svcs = m_bad[Nagios::Service]
+        m_hosts = m_bad[Nagios::Host] || []
+        m_svcs = m_bad[Nagios::Service] || []
         if (not m_hosts.empty?) || (not m_svcs.empty?)
           LOG.debug "Had problem notifications for existing problems."
           ## TODO: use a proper formatting mechanism
@@ -686,6 +686,7 @@ module Molniya
           LOG.debug "Sending message: #{msg}"
           send_msg(contact.jid, msg)
         end
+        contact.missed.clear
       end
     end
     
