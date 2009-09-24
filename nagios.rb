@@ -124,6 +124,9 @@ module Nagios
       @mutex.synchronize do 
         if (not @contents) || (not @mtime) || (source.mtime > @mtime)
           _refresh()
+          return true
+        else
+          return false
         end
       end
     end
@@ -161,6 +164,10 @@ module Nagios
         raise "Failed to load contents of #{self.class}!"
       end
       return @contents
+    end
+
+    def current_contents()
+      @contents
     end
 
     def contents=(v)
@@ -416,9 +423,13 @@ module Nagios
       nagios.sb
     end
 
-    def _refresh()
-      super()
-      nagios.status.wait_and_refresh(@mtime, 60)
+    def refresh_if_needed()
+      refreshed = super()
+      if refreshed
+        nagios.status.wait_and_refresh(@mtime, 60)
+      else
+        nagios.status.refresh_if_needed()
+      end
     end
 
     def parse()
@@ -482,7 +493,7 @@ module Nagios
 	:critical => [],
 	:unknown => []
       }
-      hosts = config.contents.hosts
+      hosts = config.current_contents.hosts
       objs.each do |otype, data|
 	case otype
 	when "hoststatus"
