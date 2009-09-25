@@ -29,7 +29,7 @@ Molniya setup:
 3. Configure your Nagios IM contacts with their IM addresses (XMPP JIDs)
    in the selected xmpp_field; I use address1.
 4. Launch the server:
-   $ ./molniya config.yaml
+   $ ./molniya -c config.yaml
 5. Connect to your XMPP server as the Molniya account and add your own
    IM account as a contact.
 
