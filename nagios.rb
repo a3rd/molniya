@@ -376,7 +376,12 @@ module Nagios
     end
 
     def <=>(other)
-      name <=> other.name
+      hcmp = host.name <=> other.host.name
+      if hcmp != 0
+        return hcmp
+      else
+        return name <=> other.name
+      end
     end
 
     def detail(fmt)
