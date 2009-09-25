@@ -231,8 +231,7 @@ module Molniya
           c.roster_item = roster_item
           contacts[jid.to_s] = c
         end
-        if old_pres \
-          && (! XMPP_AVAIL.member?(old_p)) \
+        if (! XMPP_AVAIL.member?(old_p)) \
           && XMPP_AVAIL.member?(new_p)
           # came online, catch up
           contact = contacts[jid]

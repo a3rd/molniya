@@ -85,7 +85,7 @@ module Molniya
         s.collect do |state, items|
           sprintf("%s: %s",
                   state.to_s.upcase,
-                  items.collect { |i| service_state(i) }.join("; "))
+                  items.sort.collect { |i| service_state(i) }.join("; "))
         end.join("\n")
       else
         "All clear."
