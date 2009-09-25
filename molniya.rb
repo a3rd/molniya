@@ -144,8 +144,8 @@ module Molniya
     attr_reader :command_defs
     inspect_my :client
 
-    BASE_COMMAND_DEFS = [Commands::Status, Commands::Check, Commands::Reply,
-                         Commands::Admin, Commands::Help]
+    BASE_COMMAND_DEFS = [Commands::Status, Commands::Check, Commands::Ack,
+                         Commands::Reply, Commands::Admin, Commands::Help]
 
     def initialize(sb)
       @sb = sb
