@@ -677,7 +677,7 @@ module Molniya
           end
           if not m_svcs.empty?
             smsg = m_svcs.classify { |s| s.hard_state }.collect do |state, svcs|
-              sprintf("%s: %s", state,
+              sprintf("%s: %s", state.to_s.upcase,
                       svcs.sort.collect { |s| "#{s.host.name}/#{s.name}" }.join(", "))
             end.join("; ")
             msg << smsg << "\n"
