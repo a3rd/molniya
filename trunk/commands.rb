@@ -34,6 +34,23 @@ module Molniya
         c.parent = parent
         c.invoke
       end
+
+      def parse_host_or_svc()
+        case
+        when scanner.scan(/(\w+)\//)
+          # host/svc
+          host = sb.find_host(scanner[1]) or raise "Unknown host #{scanner[1]}"
+          svc = sb.resolve_service_name(host, scanner)
+          return svc
+        when scanner.scan(/(\w+)/)
+          # host
+          host = sb.find_host(scanner[1]) or raise "Unknown host #{scanner[1]}"
+          return host
+        else
+          raise 'syntax'
+        end
+        
+      end
     end
 
     class Status < Base
@@ -62,19 +79,26 @@ module Molniya
       cmd 'check'
       def invoke
         scanner.skip(/\s*/) or raise 'syntax'
-        case
-        when scanner.scan(/(\w+)\//)
-          # host/svc
-          host = sb.find_host(scanner[1]) or raise "Unknown host #{scanner[1]}"
-          svc = sb.resolve_service_name(host, scanner)
-          sb.check(svc, contact)
-        when scanner.scan(/(\w+)/)
-          # host
-          host = sb.find_host(scanner[1]) or raise "Unknown host #{scanner[1]}"
-          sb.check(host, contact)
+        sb.check(parse_host_or_svc(), contact)
+      end
+    end
+
+    class Ack < Base
+      cmd 'ack'
+
+      def invoke
+        scanner.skip(/\s*/) or raise 'syntax'
+        entity = parse_host_or_svc()
+        scanner.skip(/\s*/)
+        if scanner.check(/\S/)
+          comment = scanner.rest
         else
-          raise 'syntax'
+          comment = "acknowledged."
         end
+        n_contact = sb.find_nagios_contact_with_jid(contact.jid)
+        raise "No Nagios contact with JID #{contact.jid}?" unless n_contact
+        entity.acknowledge(:author => n_contact.name,
+                           :comment => comment)
       end
     end
 
