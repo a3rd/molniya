@@ -447,12 +447,16 @@ module Nagios
       by_tag = Hash.new { |h, k| h[k] = {} }
       svcs = []
       defs.each do |tag, data|
-        if tag != Service.tag
-          item = OTYPE_BY_TAG[tag].new(data, self)
+        otype = OTYPE_BY_TAG[tag]
+        if otype
+          item = otype.new(data, self)
           by_tag[tag][item.name] = item
-        else
+        elsif tag == Service.tag
           # special handling for Services since they are children of Hosts
           svcs << data
+        else
+          ## fall through for unrecognized object types
+          ## e.g. hostescalation, hostextinfo, etc
         end
       end
       svcs.each do |svc_def|
