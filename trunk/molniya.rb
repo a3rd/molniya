@@ -24,6 +24,7 @@ require 'rexml/document'
 require 'set'
 require 'strscan'
 require 'thread'
+require 'time'
 require 'timeout'
 require 'uri'
 
@@ -57,6 +58,8 @@ module Molniya
   DAY = 24 * HOUR
   WEEK = 7 * DAY
 
+  OLD = Time.parse('1996-01-01')
+
   TSPEC = [[WEEK, 'w'],
            [DAY, 'd'],
            [HOUR, 'h'],
@@ -68,7 +71,11 @@ module Molniya
   LOG = Logger.new(STDERR)
 
   def self.brief_time_delta(t)
-    Molniya::brief_duration((Time.now - t).to_i)
+    if t > OLD
+      Molniya::brief_duration((Time.now - t).to_i)
+    else
+      'ever'
+    end
   end
 
   def self.brief_duration(secs, parts=TSPEC)
@@ -169,7 +176,9 @@ module Molniya
       presence()
       client.on_exception do |e, client, where|
         LOG.warn "Reconnecting after exception in #{where}: #{e}"
-        $stderr.puts e.backtrace.join("\n")
+        if e
+          $stderr.puts e.backtrace.join("\n")
+        end
         reconnect()
       end
       @worker = nil
@@ -649,10 +658,6 @@ module Molniya
 
     def catch_up(contact)
       ## just came online
-      # TODO
-      # while you were away:
-      # for each host/service with a problem notification:
-      #   if it's not OK now, notify
       LOG.debug "Catching up with contact #{contact.jid}."
       if not contact.missed.empty?
         LOG.debug "Has #{contact.missed.length} missed notifications"
