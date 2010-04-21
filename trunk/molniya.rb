@@ -280,7 +280,7 @@ module Molniya
       end
       contact = contacts[msg.from.strip]
       scanner = StringScanner.new(msg.body)
-      first = scanner.scan(/[\w@]+/)
+      first = scanner.scan(/[^\s\/]+/)
       if not first
         LOG.warn "empty body? #{msg.body.inspect}"
         return
