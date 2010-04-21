@@ -520,8 +520,9 @@ module Molniya
       update_status_msg()
       LOG.debug "setting up XMPPClient"
       @xmpp = XMPPClient.new(self)
-      @http = WebApp.new
-      @http.sb = self
+      @http = WebApp.new do |app|
+        app.sb = self
+      end
     end
 
     def start
