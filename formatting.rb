@@ -58,16 +58,16 @@ module Molniya
     end
 
     def service_state(s)
-      "#{s.name} for #{Molniya::brief_time_delta(s.last_ok)}"
+      "#{s.name} for #{Molniya::brief_time_delta(s.soft_since)}"
     end
 
     def service_detail(svc)
-      "#{svc.name}: #{svc.soft_state.to_s.upcase} for #{Molniya::brief_time_delta(svc.last_ok)}\nInfo: #{svc.info}"
+      "#{svc.name}: #{svc.soft_state.to_s.upcase} for #{Molniya::brief_time_delta(svc.soft_since)}\nInfo: #{svc.info}"
       # TODO...
     end
 
     def host_detail(h)
-      "#{h.name}: #{h.soft_state.to_s.upcase} for #{Molniya::brief_time_delta(h.last_ok)}"
+      "#{h.name}: #{h.soft_state.to_s.upcase} for #{Molniya::brief_time_delta(h.soft_since)}"
     end
 
     def status_message(s)
@@ -131,6 +131,14 @@ module Molniya
       return s
     end
 
+    def host_detail(h)
+      div = REXML::Element.new('div')
+      div.elements << host_link(h)
+      div.add_text ": #{h.soft_state.to_s.upcase} "
+      div.add_text "for #{Molniya::brief_time_delta(h.soft_since)}\nInfo: #{h.info}"
+      return div
+    end
+
     def service_notify(n)
       # "#{n.NOTIFICATIONTYPE}: Service #{n.SERVICEDESC} on #{n.HOSTNAME} is #{n.SERVICESTATE}\nInfo: #{n.SERVICEOUTPUT}"
       svc = n.referent
@@ -147,7 +155,7 @@ module Molniya
       div = REXML::Element.new('div')
       div.elements << host_svc_link(svc)
       div.add_text ": #{svc.soft_state.to_s.upcase} "
-      div.add_text "for #{Molniya::brief_time_delta(svc.last_ok)}\nInfo: #{svc.info}"
+      div.add_text "for #{Molniya::brief_time_delta(svc.soft_since)}\nInfo: #{svc.info}"
       return div
     end
 
@@ -155,7 +163,7 @@ module Molniya
       span = REXML::Element.new('span')
       span << host_svc_link(s)
       span.add_text " for "
-      span.add_text Molniya::brief_time_delta(s.last_ok)
+      span.add_text Molniya::brief_time_delta(s.soft_since)
       return span
     end
 
@@ -163,7 +171,7 @@ module Molniya
       span = REXML::Element.new('span')
       span << host_svc_link(s)
       span.add_text " for "
-      span.add_text Molniya::brief_time_delta(s.last_ok)
+      span.add_text Molniya::brief_time_delta(s.soft_since)
       return span
     end
 
@@ -178,7 +186,7 @@ module Molniya
           items.each do |i|
             sd << i.link(self)
             sd.add_text(" for ")
-            sd.add_text(Molniya::brief_time_delta(i.last_ok))
+            sd.add_text(Molniya::brief_time_delta(i.soft_since))
             if i != items.last
               sd.add_text("; ")
             end

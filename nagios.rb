@@ -67,7 +67,7 @@ module Nagios
     data = {}
     while true
       line = f.readline
-      if line =~ /\s*([a-z0-9_]+)=(.*)/
+      if line =~ /\s*([a-zA-Z0-9_]+)=(.*)/
 	data[$1] = $2
       elsif line =~ /\s*\}/
 	break
@@ -101,7 +101,7 @@ module Nagios
     data = {}
     while true
       line = f.readline
-      if line =~ /\s*([a-z0-9_]+)\s+(.*)/
+      if line =~ /\s*([a-zA-Z0-9_]+)\s+(.*)/
 	data[$1] = $2
       elsif line =~ /\s*\}/
 	break
