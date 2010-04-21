@@ -16,3 +16,7 @@ smtp_relay: smtp.example.com
 http_opts:
   :Host: localhost
   :Port: 7991
+# XMPP message formatting mode; can be
+# xhtml: default mode, makes host and service names into links
+# plain: plain text, if your XMPP client doesn't handle XHTML well
+xmpp_fmt: xhtml

@@ -80,12 +80,24 @@ module Molniya
       end
     end
 
+    def item_status_entry(i)
+      case
+      when i.is_a?(Nagios::Host)
+        "#{i.name} for #{Molniya::brief_time_delta(i.soft_since)}"
+      when i.is_a?(Nagios::Service)
+        "#{i.host.name}/#{i.name} for #{Molniya::brief_time_delta(i.soft_since)}"
+      else
+        raise "Unexpected item #{i.inspect}!"
+      end
+    end
+
     def status_report(s)
-      if not s.empty?
-        s.collect do |state, items|
+      if (not s[:services].empty?) or (not s[:hosts].empty?)
+        (s[:hosts] + s[:services]).collect do |state, items_r|
+          items = items_r.to_a.sort
           sprintf("%s: %s",
                   state.to_s.upcase,
-                  items.sort.collect { |i| service_state(i) }.join("; "))
+                  items.collect { |i| item_status_entry(i) }.join("; "))
         end.join("\n")
       else
         "All clear."
