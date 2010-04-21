@@ -506,9 +506,14 @@ module Molniya
       if conf.has_key? :log_level
         LOG.level = Logger.const_get(conf[:log_level])
       end
+      xmpp_fmt = case conf['xmpp_fmt'] || 'xhtml'
+                 when 'xhtml': XMPPHTMLFormatter.new(self)
+                 when 'plain': XMPPFormatter.new()
+                 else raise "Unsupported formatting mode #{conf['xmpp_fmt']}"
+                 end
       @nagios = NagiosInstance.new(conf, self)
       @fmt = {
-        :xmpp => XMPPHTMLFormatter.new(self),
+        :xmpp => xmpp_fmt,
         :email => EmailFormatter.new,
         :email_subject => EmailSubjectFormatter.new
       }
