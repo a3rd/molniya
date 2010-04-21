@@ -121,12 +121,14 @@ module Nagios
     end
 
     def refresh_if_needed()
-      @mutex.synchronize do 
-        if (not @contents) || (not @mtime) || (source.mtime > @mtime)
-          _refresh()
-          return true
-        else
-          return false
+      @mutex.synchronize do
+        if source.exist?
+          if (not @contents) || (not @mtime) || (source.mtime > @mtime)
+            _refresh()
+            return true
+          else
+            return false
+          end
         end
       end
     end
@@ -476,6 +478,7 @@ module Nagios
     include Inspectable
 
     attr_accessor :config, :services, :hosts_by, :services_by, :nagios
+    attr_reader :source
     inspect_my :source
 
     def initialize(path, nagios)
