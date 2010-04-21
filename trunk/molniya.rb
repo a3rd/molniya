@@ -427,6 +427,10 @@ module Molniya
     end
 
     SVC_PROBLEMS = [:critical, :warning, :unknown]
+
+    def status_exists?()
+      status.source.exist?
+    end
     
     def status_report()
       ok_hosts, bad_hosts =
@@ -591,7 +595,12 @@ module Molniya
     end
 
     def update_status_msg
-      @status_msg = fmt[:xmpp].status_message(nagios.status_report())
+      if nagios.status_exists?
+        @status_msg = fmt[:xmpp].status_message(nagios.status_report())
+      else
+        LOG.warn "Nagios is not running!"
+        @status_msg = "Nagios is not running!"
+      end
       if xmpp
         xmpp.presence()
       end
