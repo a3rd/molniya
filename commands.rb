@@ -37,17 +37,17 @@ module Molniya
 
       def parse_host_or_svc()
         case
-        when scanner.scan(/(\w+)\//)
+        when scanner.scan(/([^\s\/]+)\//)
           # host/svc
           host = sb.find_host(scanner[1]) or raise "Unknown host #{scanner[1]}"
           svc = sb.resolve_service_name(host, scanner)
           return svc
-        when scanner.scan(/(\w+)/)
+        when scanner.scan(/([^\s\/]+)/)
           # host
           host = sb.find_host(scanner[1]) or raise "Unknown host #{scanner[1]}"
           return host
         else
-          raise 'syntax'
+          raise "Parse error at: #{scanner.rest.inspect}"
         end
         
       end
@@ -164,12 +164,12 @@ module Molniya
         case admin_cmd
         when 'list-roster'
           client.send_msg(msg.from,
-                          "Roster: " + roster.items.keys.sort.join(", "))
+                          "Roster: " + client.roster.items.keys.sort.join(", "))
         when 'add'
           if scanner.scan(/(\S+)\s+(\S+)/)
             jid = scanner[0]
             iname = scanner[1]
-            roster.add(Jabber::JID.new(jid), iname, true)
+            client.roster.add(Jabber::JID.new(jid), iname, true)
             client.send_msg(msg.from, "Added #{jid} (#{iname}) to roster and requested presence subscription.")
           else
             client.send_msg(msg.from, "Usage: admin add <jid> <alias>")
@@ -177,7 +177,7 @@ module Molniya
         when 'remove'
           jid = scanner.scan(/\S+/)
           if jid
-            roster[jid].remove()
+            client.roster[jid].remove()
             client.send_msg(msg.from, "Contact #{jid} successfully removed from roster.")
           else
             client.send_msg(msg.from, "Usage: admin remove <jid>")
