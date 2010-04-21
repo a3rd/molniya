@@ -18,6 +18,7 @@ Requirements:
   * sinatra
   * rack
   * mongrel
+  * mongrel_cluster (or a dependency) was reported to solve a mongrel problem.
 
 
 Molniya setup:

@@ -576,7 +576,7 @@ module Molniya
     end
 
     def resolve_service_name(host, scanner)
-      sname = host.services.keys.find { |n| scanner.scan(Regexp.new(n)) }
+      sname = host.services.keys.find { |n| scanner.scan(Regexp.new(n, true)) }
       if sname
         return host.services[sname]
       else
