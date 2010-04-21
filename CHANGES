@@ -1,0 +1,17 @@
+Changes in version 0.3:
+
+ * Fixed catch-up feature.
+ * Made services sort properly.
+ * Added top-level ack command.
+ * Don't break when unhandled object types are in the Nagios configuration.
+ * Hostname parsing is more lenient, allowing all characters except / and whitespace.
+ * 'admin' commands for roster management should work now.
+ * Report time since last soft state change in status and host/service detail output.
+ * Match service names case-insensitively.
+ * Parse uppercase variable names, to support Nagios custom variables.
+ * Improved HTML formatting.
+ * Resurrected plain-text formatting support.
+ * Added xmpp_fmt config option to select between xhtml and plain output.
+ * Fix for compatibility with Sinatra 1.0.
+ * Don't crash or fail to start just because Nagios isn't running.
+
