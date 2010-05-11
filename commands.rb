@@ -31,7 +31,7 @@ module Molniya
         c.scanner = scanner
         c.sb = sb
         c.client = client
-        c.parent = parent
+        c.parent = self
         c.invoke
       end
 
@@ -134,10 +134,10 @@ module Molniya
       SUB = [ReplyAck, ReplyCheck]
 
       def invoke
-        unless cmd_text =~ cmd
+        unless cmd_text =~ self.class.cmd
           raise "inconsistent dispatch!"
         end
-        n = contact.recent[$1.to_i]
+        self.n = contact.recent[$1.to_i]
         if n
           scanner.skip(/\s*/)
           scmd_w = scanner.scan(/\w+/) or raise "Missing subcommand!"
