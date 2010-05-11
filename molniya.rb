@@ -110,7 +110,7 @@ module Molniya
         return false
       end
       if roster_item.online?
-        show = roster_item.presences.last.show
+        show = roster_item.presences.last.show || :available
         return XMPP_AVAIL.member?(show)
       else
         return false
