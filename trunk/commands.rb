@@ -167,8 +167,8 @@ module Molniya
                           "Roster: " + client.roster.items.keys.sort.join(", "))
         when 'add'
           if scanner.scan(/(\S+)\s+(\S+)/)
-            jid = scanner[0]
-            iname = scanner[1]
+            jid = scanner[1]
+            iname = scanner[2]
             client.roster.add(Jabber::JID.new(jid), iname, true)
             client.send_msg(msg.from, "Added #{jid} (#{iname}) to roster and requested presence subscription.")
           else
