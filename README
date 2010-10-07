@@ -12,7 +12,7 @@ Requirements:
  * A Unix/Linux system running Nagios 3.
  * An XMPP server and user account; Google Talk works.
  * An SMTP server to relay outgoing mail.
- * Ruby 1.9 with the following gems:
+ * Ruby 1.8 or 1.9 (strongly preferred) with the following gems:
   * metaid
   * xmpp4r
   * sinatra
@@ -20,6 +20,7 @@ Requirements:
   * mongrel or thin
   * mongrel_cluster (or a dependency) was reported to solve a mongrel problem.
 
+Ruby 1.9 is preferable since the timeout facility in Ruby 1.8 is somewhat broken, this can cause Molniya to block indefinitely while attempting to reconnect to the XMPP server. It does still work with 1.8, though.
 
 Molniya setup:
 
