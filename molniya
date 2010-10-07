@@ -15,4 +15,6 @@
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ## General Public License for more details.
 
-ruby -rubygems -rmolniya -e 'Molniya::launch()' -- $*
+rvm=${RUBY:-ruby}
+
+$rvm -I${MOLNIYA_HOME:-`pwd`} -rubygems -rmolniya -e 'Molniya::launch()' -- $*
