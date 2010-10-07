@@ -147,7 +147,7 @@ module Molniya
 
   class XMPPClient
     include Inspectable
-    attr_accessor :sb, :client, :roster, :contacts, :inbox, :worker
+    attr_accessor :sb, :client, :roster, :contacts, :inbox, :worker, :disco
     attr_reader :command_defs
     inspect_my :client
 
@@ -166,18 +166,19 @@ module Molniya
       # @client = TraceClient.new(sb.conf['username'])
       LOG.info "Connecting to XMPP server..."
       client.on_exception do |e, client, where|
-        LOG.error "Error connecting in #{where}: #{e}"
-        LOG.error e.backtrace.join("\n")
+        LOG.error("Error connecting in #{where}: #{e}")
+        LOG.error(e.backtrace.join("\n")) if e
       end
       initial_connect()
       LOG.debug "Setting up roster helper."
       @roster = Jabber::Roster::Helper.new(client)
+      # @disco = Jabber::Discovery::Helper.new(client)
       init_callbacks
       presence()
       client.on_exception do |e, client, where|
-        LOG.warn "Reconnecting after exception in #{where}: #{e}"
+        LOG.warn("Reconnecting after exception in #{where}: #{e}")
         if e
-          $stderr.puts e.backtrace.join("\n")
+          LOG.error(e.backtrace.join("\n")) if e
         end
         reconnect()
       end
@@ -272,12 +273,13 @@ module Molniya
       ## TODO: ls
       ## TODO: admin alias (?? what was this supposed to be?)
       unless msg.body
-        #LOG.debug "message with no body."
+        LOG.debug "message with no body."
         return
       end
       unless known_sender? msg
         return
       end
+      LOG.debug "message from #{msg.from.strip}: #{msg.body.inspect}"
       contact = contacts[msg.from.strip]
       scanner = StringScanner.new(msg.body)
       first = scanner.scan(/[^\s\/]+/)
@@ -287,12 +289,14 @@ module Molniya
       end
       begin
         ## TODO: check contact can_submit_commands property on writes
-        cd = command_defs.find { |cd| cd.cmd === first }
+        first_d = first.downcase
+        cd = command_defs.find { |cd| cd.cmd === first_d }
         if cd
-          #LOG.debug "invoking command: #{cd}"
-          invoke_cmd(cd, first, msg, contact, scanner)
+          LOG.debug "invoking command: #{cd}"
+          invoke_cmd(cd, first_d, msg, contact, scanner)
         else
           # not a recognized command, is it host or host/svc?
+          ## TODO: case-insensitive host search?
           host = sb.find_host(first)
           if host
             if scanner.scan(/\//)
@@ -305,15 +309,16 @@ module Molniya
                          first, msg, contact, scanner, host)
             end
           else
+            LOG.debug "unhandled message: #{msg}"
             send_msg(msg.from,
                      "I\'m sorry, I didn\'t quite catch that?")
           end
         end
       rescue Exception => e
-        send_msg(msg.from, "Oops. #{e}")
-        #raise
         LOG.error e
         LOG.error e.backtrace.join("\n")
+        send_msg(msg.from, "Oops. #{e}")
+        #raise
       end
     end
 
@@ -331,11 +336,14 @@ module Molniya
     ### send messages
 
     def presence()
-      client.send(Jabber::Presence.new(:chat, self.sb.status_msg))
+      if self.sb.status_msg != @last_presence
+        client.send(Jabber::Presence.new(:chat, self.sb.status_msg))
+        @last_presence = self.sb.status_msg
+      end
     end
 
     def send_msg(jid, contents)
-      #LOG.debug "sending message to #{jid}: #{contents}"
+      LOG.debug "sending message to #{jid}: #{contents}"
       client.send(Jabber::Message.new(jid, contents))
     end
 
@@ -475,16 +483,18 @@ module Molniya
   class WebApp < Sinatra::Base
     include Inspectable
 
-    attr_accessor :sb
+    set :environment, :production
+    enable :dump_errors
+    disable :show_exceptions
 
     post '/contact/:cname/notify' do
       #log "notification request with parameters: #{params.inspect}"
-      sb.notification(params[:cname], params['policy'], OpenStruct.new(params))
+      settings.sb.notification(params[:cname], params['policy'], OpenStruct.new(params))
       status 204
     end
     
     post '/contact/:jid/send' do
-      sb.send_msg(params[:jid], params[:message] || params['rack.input'].read)
+      settings.sb.send_msg(params[:jid], params[:message] || params['rack.input'].read)
       status 204
     end
     
@@ -507,12 +517,14 @@ module Molniya
       elsif conf.has_key? :log_file
         Molniya.const_set(:LOG, Logger.new(conf[:log_file], 'daily'))
       end
-      if conf.has_key? :log_level
-        LOG.level = Logger.const_get(conf[:log_level])
-      end
+      LOG.level = case
+                  when options.debug then Logger::DEBUG
+                  when conf[:log_level] then Logger.const_get(conf[:log_level])
+                  else Logger::INFO
+                  end
       xmpp_fmt = case conf['xmpp_fmt'] || 'xhtml'
-                 when 'xhtml': XMPPHTMLFormatter.new(self)
-                 when 'plain': XMPPFormatter.new()
+                 when 'xhtml' then XMPPHTMLFormatter.new(self)
+                 when 'plain' then XMPPFormatter.new()
                  else raise "Unsupported formatting mode #{conf['xmpp_fmt']}"
                  end
       @nagios = NagiosInstance.new(conf, self)
@@ -524,19 +536,30 @@ module Molniya
       update_status_msg()
       LOG.debug "setting up XMPPClient"
       @xmpp = XMPPClient.new(self)
-      @http = WebApp.new do |app|
-        app.sb = self
-      end
     end
 
     def start
       xmpp.start_worker()
-      LOG.debug "Starting HTTP server."
-      @http_worker = Thread.new { Rack::Handler::Mongrel.run(@http, @conf['http_opts']) }
+      LOG.debug "Starting HTTP server with options: #{@conf['http_opts'].inspect}"
+      WebApp.set(:sb, self)
+      WebApp.set(:bind, @conf['http_opts'][:Host])
+      WebApp.set(:port, @conf['http_opts'][:Port])
+      @http_worker = Thread.new { WebApp.run! }
+      until WebApp.running
+        sleep 1
+      end
     end
 
     def run
       interval = 30
+      @int_trap_next = trap(:INT) do
+        LOG.info "Interrupted, exiting."
+        if @int_trap_next
+          @int_trap_next.call()
+        end
+        xmpp.client.close
+        exit 0
+      end
       LOG.info "Switchboard running."
       while true
         unless xmpp.worker.alive?
@@ -586,9 +609,10 @@ module Molniya
     end
 
     def resolve_service_name(host, scanner)
-      sname = host.services.keys.find { |n| scanner.scan(Regexp.new(n, true)) }
-      if sname
-        return host.services[sname]
+      s_names = host.services.keys.sort_by { |n| n.length }.reverse
+      exact = s_names.find { |n| scanner.scan(Regexp.new(n, true)) }
+      if exact
+        return host.services[exact]
       else
         raise "Unknown service starting with #{scanner.rest} for host #{host.name}"
       end
@@ -606,23 +630,28 @@ module Molniya
       end
     end
 
+    def register_for_notification(item, contact)
+      req_t = Time.now
+      nagios.status.register do |sv|
+        if item.last_check > req_t
+          ## got an update, report on it
+          xmpp.send_msg(contact.jid, item.detail(:xmpp))
+          ## deregister
+          false
+        else
+          ## no update yet, stay registered
+          true
+        end
+      end
+    end
+
     def check(item, notify=nil)
       req_t = Time.now
       ## force a check
       item.force_check(req_t)
       ## register if needed
       if notify
-        nagios.status.register do |sv|
-          if item.last_check > req_t
-            ## got an update, report on it
-            xmpp.send_msg(notify.jid, item.detail(:xmpp))
-            ## deregister
-            false
-          else
-            ## no update yet, stay registered
-            true
-          end
-        end
+        register_for_notification(item, notify)
       end
     end
 
@@ -710,6 +739,7 @@ module Molniya
     end
     
     def send_msg(jid, msg)
+      LOG.debug "Sending message to #{jid}: #{msg}"
       xmpp.send_msg(jid, msg)
     end
 
@@ -742,6 +772,7 @@ EOF
   def self.launch
     options = OpenStruct.new
     options.eval = false
+    options.debug = false
     opt_p = OptionParser.new do |opts|
       opts.banner = "Usage: molniya [options]"
       opts.separator "Required options:"
@@ -751,6 +782,9 @@ EOF
       opts.separator "Optional:"
       opts.on("-e", "--[no-]eval", "Enable 'eval' command") do |e|
         options.eval = e
+      end
+      opts.on("-d", "--debug", "Debug mode") do
+        options.debug = true
       end
       opts.on_tail("-h", "--help", "Show this message") do
         puts opts

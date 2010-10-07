@@ -1,3 +1,14 @@
+Changes in version 0.4:
+ * Added Ruby 1.9 support. 1.9 fixes a serious timeout bug in 1.8 and improves threading; it is now the recommended platform for Molniya.
+ * Added support for RUBY and MOLNIYA_HOME environment variables.
+ * Added basic help for admin commands.
+ * Handle forced checks of passive hosts and services better.
+ * Use Sinatra's Base#run! to run whatever web server is available instead of hard-coding Mongrel.
+ * Fixed an error that was preventing reconnection.
+ * Added command-line debug switch; defaulted log level to INFO.
+ * Match commands case-insensitively.
+ * Match service names longest-first.
+
 Changes in version 0.3:
 
  * Fixed catch-up feature.

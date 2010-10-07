@@ -79,7 +79,13 @@ module Molniya
       cmd 'check'
       def invoke
         scanner.skip(/\s*/) or raise 'syntax'
-        sb.check(parse_host_or_svc(), contact)
+        ref = parse_host_or_svc()
+        if ! ref.active_checks?
+          sb.check(ref, contact)
+        else
+          sb.register_for_notification(ref, contact)
+          client.send_msg(msg.from, "Active checks are disabled for #{ref.name}; will report next status received.")
+        end
       end
     end
 
@@ -123,7 +129,12 @@ module Molniya
       cmd 'check'
 
       def invoke
-        sb.check(parent.n.referent, contact)
+        ref = parent.n.referent
+        if ! ref.active_checks?
+          sb.check(ref, contact)
+        else
+          client.send_msg(msg.from, "Active checks are disabled for #{ref.name}.")
+        end
       end
     end
 
@@ -182,6 +193,12 @@ module Molniya
           else
             client.send_msg(msg.from, "Usage: admin remove <jid>")
           end
+        when 'help', '', nil
+          cmds = ['admin list-roster',
+                  'admin add <jid> <alias>',
+                  'admin remove <jid>',
+                  'admin help']
+          client.send_msg(msg.from, "Admin commands:\n" + cmds.join("\n"))
         else
           client.send_msg(msg.from, "Unknown admin command #{admin_cmd}")
         end

@@ -212,6 +212,10 @@ module Nagios
     def info
       return @state['plugin_output']
     end
+
+    def active_checks?
+      props['active_checks_enabled'] == '0'
+    end
   end
 
   class ConfigItem
