@@ -428,9 +428,9 @@ module Molniya
       @last_mtime = nil
       @sb = sb
       nagios_var = Pathname.new(conf['nagios_var'])
-      #log "Nagios /var is #{nagios_var}"
-      @config = Nagios::Config.new(nagios_var + 'objects.cache', self)
-      @status = Nagios::Status.new(nagios_var + 'status.dat', self)
+      nagios_cache = Pathname.new(conf['nagios_cache'] || conf['nagios_var'])
+      @config = Nagios::Config.new(nagios_cache + 'objects.cache', self)
+      @status = Nagios::Status.new(nagios_cache + 'status.dat', self)
       @cmd_t = Nagios::CommandTarget.new(nagios_var + 'rw' + 'nagios.cmd')
     end
 

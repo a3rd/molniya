@@ -2,20 +2,32 @@
 username: nagios@example.com/molniya
 # Password for XMPP user
 password: examplepass
+
 # Base URI for your Nagios installation
 nagios_uri: http://nagios.example.com/nagios
+
 # /var directory of your Nagios installation
 nagios_var: /usr/local/nagios/var
+
+# Nagios cache directory; the location of status.dat and object.cache,
+# if your Nagios / Icinga distribution doesn't keep these in nagios_var.
+# Not needed with the standard Nagios layout.
+# For Debian's nagios3 or icinga packages you'll likely need something like
+#nagios_cache: /var/cache/icinga
+
 # Nagios contact field used to store XMPP JID
 xmpp_field: address1
+
 # email address to send mail as
 smtp_from: nagios@example.com
 # SMTP server to use
 smtp_relay: smtp.example.com
+
 # Options suitable for passing to Rack::Handler::Mongrel#run
 http_opts:
   :Host: localhost
   :Port: 7991
+
 # XMPP message formatting mode; can be
 # xhtml: default mode, makes host and service names into links
 # plain: plain text, if your XMPP client doesn't handle XHTML well

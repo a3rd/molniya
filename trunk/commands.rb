@@ -57,9 +57,13 @@ module Molniya
       cmd 'status'
 
       def invoke
-        report = sb.nagios.status_report()
-        client.send_msg(msg.from,
-                        sb.fmt[:xmpp].status_report(report))
+        if sb.nagios.status_exists?
+          report = sb.nagios.status_report()
+          reply = sb.fmt[:xmpp].status_report(report)
+        else
+          reply = "Nagios is not running!"
+        end
+        client.send_msg(msg.from, reply)
       end
     end
 

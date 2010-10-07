@@ -8,6 +8,8 @@ Changes in version 0.4:
  * Added command-line debug switch; defaulted log level to INFO.
  * Match commands case-insensitively.
  * Match service names longest-first.
+ * Only update IM presence status if it changes; fixes bug #19.
+ * Support Debian-ish layouts with Nagios' objects.cache and status.dat files in a different directory than nagios.cmd; fixes bug #18.
 
 Changes in version 0.3:
 
