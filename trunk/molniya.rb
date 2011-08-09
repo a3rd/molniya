@@ -110,6 +110,7 @@ module Molniya
         return false
       end
       if roster_item.online?
+        LOG.debug "last presences for #{jid}: #{roster_item.presences.last}, show #{roster_item.presences.last.show}"
         show = roster_item.presences.last.show || :available
         return XMPP_AVAIL.member?(show)
       else
@@ -164,24 +165,15 @@ module Molniya
         command_defs << Commands::Eval
       end
       # @client = TraceClient.new(sb.conf['username'])
-      LOG.info "Connecting to XMPP server..."
       client.on_exception do |e, client, where|
         LOG.error("Error connecting in #{where}: #{e}")
         LOG.error(e.backtrace.join("\n")) if e
       end
-      initial_connect()
-      LOG.debug "Setting up roster helper."
+      LOG.info "Connecting to XMPP server..."
+      connect()
       @roster = Jabber::Roster::Helper.new(client)
-      # @disco = Jabber::Discovery::Helper.new(client)
-      init_callbacks
+      init_callbacks()
       presence()
-      client.on_exception do |e, client, where|
-        LOG.warn("Reconnecting after exception in #{where}: #{e}")
-        if e
-          LOG.error(e.backtrace.join("\n")) if e
-        end
-        reconnect()
-      end
       @worker = nil
     end
 
@@ -189,22 +181,56 @@ module Molniya
       @worker = Thread.new { run() }
     end
 
-    def initial_connect()
-      status = Timeout::timeout(15) do
-        connect()
+    def connect()
+      while true
+        begin
+          status = Timeout::timeout(15) do
+            _connect()
+          end
+          ## success
+          register_for_reconnect()
+          break
+        rescue StandardError => e
+          LOG.error "Failed to connect: #{e}"
+          begin
+            client.close()
+          rescue StandardError => ce
+            LOG.error "Failed to close connection: #{ce}"
+          end
+          LOG.info "Sleeping 15 seconds before retry."
+          sleep 15
+        rescue Timeout::Error
+          LOG.info "Timed out attempting to connect."
+          begin
+            client.close()
+          rescue StandardError => ce
+            LOG.error "Failed to close connection: #{ce}"
+          end
+        end
       end
     end
 
-    def connect()
+    def _connect()
       client.connect()
       LOG.info "Connected."
       client.auth(sb.conf['password'])
       LOG.debug "Authenticated."
     end
 
+    def register_for_reconnect()
+      client.on_exception do |e, client, where|
+        LOG.warn("Reconnecting after exception in #{where}: #{e}")
+        LOG.error(e.backtrace.join("\n")) if e
+        reconnect()
+      end
+    end
+
     def reconnect()
+      ## clear reconnect handler, we're already trying
+      client.on_exception {}
       connect()
       presence()
+      LOG.info "Successfully reconnected."
     end
 
     def enqueue_in(item)
@@ -226,7 +252,7 @@ module Molniya
       end
     end
 
-    def init_callbacks
+    def init_callbacks()
       ## client callbacks are invoked in parser thread, must enqueue
       client.add_message_callback { |msg| enqueue_in([:message, msg]) }
 
@@ -235,7 +261,7 @@ module Molniya
         old_p = presence_sym(old_pres)
         new_p = presence_sym(new_pres)
         jid = roster_item.jid.strip
-        #LOG.debug "got presence for #{jid}: old #{old_p}, new #{new_p}"
+        LOG.debug "got presence for #{jid}: old #{old_p}, new #{new_p}"
         unless contacts.has_key? jid
           c = Contact.new(jid)
           c.roster_item = roster_item
@@ -373,7 +399,8 @@ module Molniya
 
     def run()
       LOG.debug "Beginning XMPP message processing."
-      while true
+      keep_running = true
+      while keep_running
         msg = nil
         begin
           item = inbox.pop()
@@ -381,11 +408,24 @@ module Molniya
           case type
           when :message
             msg = item[1]
-            if known_sender?(msg)
-              #LOG.debug "received message: #{msg}"
-              handle_message(msg)
+            if msg.error
+              case msg.error.type
+              when :continue then LOG.warn "Server warning: #{msg.error}"
+              when :cancel
+                LOG.error "Unrecoverable error from XMPP server: #{msg.error}"
+                client.close()
+                keep_running = false
+              else
+                LOG.error "Unexpected error from XMPP server: #{msg.error}"
+                keep_running = false
+              end
             else
-              LOG.warn "message from unknown sender: #{msg}"
+              if known_sender?(msg)
+                #LOG.debug "received message: #{msg}"
+                handle_message(msg)
+              else
+                LOG.warn "message from unknown sender: #{msg}"
+              end
             end
           else
             LOG.error "unhandled inbox item: #{item.inspect}"
@@ -563,7 +603,12 @@ module Molniya
       LOG.info "Switchboard running."
       while true
         unless xmpp.worker.alive?
-          raise "XMPPClient worker thread died!"
+          LOG.error "XMPPClient worker thread died!"
+          xmpp.client.close
+          LOG.info "Restarting XMPP subsystem..."
+          @xmpp = XMPPClient.new(self)
+          xmpp.start_worker()
+          LOG.info "Restarted XMPP."
         end
         update_status_msg()
         if nagios.status.listeners?
