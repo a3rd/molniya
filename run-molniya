@@ -3,5 +3,5 @@
 export MOLNIYA_HOME=`pwd`
 
 while [ -d / ]; do 
-  ./molniya -c ../switchboard/switchboard2.yaml
+  ./molniya -c config.yaml
 done
