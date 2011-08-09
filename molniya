@@ -17,4 +17,4 @@
 
 rvm=${RUBY:-ruby}
 
-$rvm -I${MOLNIYA_HOME:-`pwd`} -rubygems -rmolniya -e 'Molniya::launch()' -- $*
+$rvm -I${MOLNIYA_HOME:-`dirname $0`} -rubygems -rmolniya -e 'Molniya::launch()' -- $*

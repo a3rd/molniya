@@ -1,0 +1,7 @@
+#!/bin/ksh
+
+export MOLNIYA_HOME=`pwd`
+
+while [ -d / ]; do 
+  ./molniya -c ../switchboard/switchboard2.yaml
+done
